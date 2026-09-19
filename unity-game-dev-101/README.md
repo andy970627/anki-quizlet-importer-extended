@@ -76,7 +76,38 @@ Unity 採用「組合優於繼承」的架構：
 
 按上方 ▶️ **Play**，用方向鍵/WASD 移動玩家，碰到金幣會消失並加分，Console（或 UI 文字）會顯示目前分數。
 
-## 7. 下一步可以學什麼
+## 7. Pixel Art 素材製作：把照片轉成像素畫風格
+
+`Tools/pixelate.py` 是一個獨立的 Python 小工具，把一張普通照片轉成復古像素畫風格，方便快速產生遊戲用的素材（角色、背景、道具貼圖）。
+
+原理很單純：先把圖片縮小成一堆大色塊（每個色塊代表一個「像素」），把顏色數量壓縮成一組有限色盤，再用最近鄰插值放大回原尺寸，讓邊緣維持銳利的方塊感，而不是模糊漸層。
+
+### 使用方式
+
+```bash
+cd unity-game-dev-101/Tools
+pip install -r requirements.txt
+
+python pixelate.py 你的照片.jpg 輸出.png --pixel-size 8 --colors 32
+```
+
+參數說明：
+
+| 參數 | 說明 |
+|---|---|
+| `--pixel-size` | 每個「像素方塊」對應原圖幾個像素，數字越大畫面越粗糙、越復古（8 是不錯的起點） |
+| `--colors` | 輸出圖片的色盤數量，數字越小風格越強烈（16、32 都是常見的懷舊色深） |
+
+### 把輸出的圖片匯入 Unity 當作 Sprite
+
+1. 把產生好的 `.png` 拖進 `Assets/`（可以在裡面新增 `Sprites/` 資料夾整理）。
+2. 選中該圖片，Inspector 裡設定：
+   - **Texture Type**: `Sprite (2D and UI)`
+   - **Filter Mode**: `Point (no filter)` ← 關鍵！否則 Unity 預設會把像素邊緣模糊化
+   - **Compression**: `None`，避免壓縮把顏色又搞糊
+3. `Apply` 套用後，就能把它拖到場景上的 `Sprite Renderer` 使用，或做成 Prefab（例如取代前面章節用的方形 `Player`、圓形 `Coin`）。
+
+## 8. 下一步可以學什麼
 
 - **Prefab 與 Instantiate**：動態生成物件（例如敵人、子彈）。
 - **Animator / Animation**：角色動畫狀態機。
@@ -98,5 +129,8 @@ unity-game-dev-101/
 │   └── manifest.json            # 套件相依清單
 ├── ProjectSettings/
 │   └── ProjectVersion.txt       # 指定 Unity Editor 版本
+├── Tools/
+│   ├── pixelate.py              # 照片轉像素畫風格工具
+│   └── requirements.txt         # pixelate.py 的 Python 相依套件
 └── README.md                    # 本文件
 ```
