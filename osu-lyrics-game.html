@@ -37,6 +37,7 @@
     font-size: 0.85rem;
     color: #b7a6e0;
     letter-spacing: 1px;
+    text-align: center;
   }
   #app {
     width: 100%;
@@ -55,16 +56,19 @@
     font-size: 1.1rem;
     font-weight: bold;
     gap: 8px;
+    flex-wrap: wrap;
   }
   #hud .badge {
     background: var(--panel);
     padding: 6px 16px;
     border-radius: 999px;
     border: 1px solid rgba(255,255,255,0.15);
+    white-space: nowrap;
   }
   #hud .badge.score { color: var(--accent); }
   #hud .badge.time { color: var(--accent2); }
   #hud .badge.combo { color: #ffd76f; }
+  #hud .badge.acc { color: #a6ff6f; }
   #muteBtn {
     background: var(--panel);
     border: 1px solid rgba(255,255,255,0.15);
@@ -75,6 +79,42 @@
     cursor: pointer;
     line-height: 1;
   }
+  #statusBars {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #b7a6e0;
+  }
+  .bar-row .bar-label {
+    width: 34px;
+    flex-shrink: 0;
+  }
+  .bar-track {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.12s linear, background-color 0.2s ease;
+  }
+  #hpFill { background: linear-gradient(90deg, #6fff9e, #a6ff6f); }
+  #hpFill.warn { background: linear-gradient(90deg, #ffd76f, #ffb86f); }
+  #hpFill.danger { background: linear-gradient(90deg, #ff6f6f, #ff3d5a); }
+  #timeFill { background: linear-gradient(90deg, var(--accent2), var(--accent)); width: 100%; }
   #lyricTicker {
     width: 100%;
     max-width: 800px;
@@ -125,15 +165,26 @@
     color: #d9c9ff;
     font-size: 0.95rem;
   }
+  #overlay .result-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 8px 20px;
+    text-align: left;
+    max-width: 360px;
+  }
+  #overlay .result-grid div span.k { color: #b7a6e0; font-size: 0.8rem; display: block; }
+  #overlay .result-grid div span.v { font-size: 1.1rem; font-weight: bold; }
   #overlay .result-score {
     font-size: 2.4rem;
     font-weight: bold;
     color: var(--accent);
     text-shadow: 0 0 16px rgba(255,111,174,0.7);
   }
-  #overlay .result-combo {
-    font-size: 1rem;
-    color: #ffd76f;
+  #overlay .result-rank {
+    font-size: 3.2rem;
+    font-weight: bold;
+    line-height: 1;
+    text-shadow: 0 0 20px currentColor;
   }
   button.game-btn {
     padding: 12px 32px;
@@ -161,13 +212,25 @@
 <body>
 <div id="app">
   <h1>♪ 節奏歌詞打擊遊戲 ♪</h1>
-  <div class="subtitle">歌曲：Twinkle Twinkle Little Star（經典英文兒歌，公共領域）</div>
+  <div class="subtitle">歌曲：She'll Be Comin' Round the Mountain（美國經典鄉村民謠，公共領域）</div>
 
   <div id="hud">
     <div class="badge score">分數：<span id="scoreVal">0</span></div>
     <div class="badge combo">連擊：<span id="comboVal">0</span></div>
+    <div class="badge acc">準度：<span id="accVal">100</span>%</div>
     <div class="badge time">剩餘時間：<span id="timeVal">60</span> 秒</div>
     <button id="muteBtn" title="切換音樂">🔊</button>
+  </div>
+
+  <div id="statusBars">
+    <div class="bar-row">
+      <span class="bar-label">HP</span>
+      <div class="bar-track"><div class="bar-fill" id="hpFill" style="width:100%"></div></div>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">進度</span>
+      <div class="bar-track"><div class="bar-fill" id="timeFill" style="width:100%"></div></div>
+    </div>
   </div>
 
   <div id="lyricTicker">按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！</div>
@@ -176,10 +239,11 @@
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     <div id="overlay">
       <p>
-        遊戲開始後會播放《Twinkle Twinkle Little Star》的旋律，<br>
+        遊戲開始後會播放《She'll Be Comin' Round the Mountain》的旋律，<br>
         音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
-        請在音符圈縮小到定位時盡快點擊，點中即可得 1 分！<br>
-        時間限制為 <strong>60 秒</strong>，時間到即結束並顯示總分。
+        請盡量在音符圈縮小到定位的瞬間點擊：<br>
+        <strong style="color:#ff9ecb">PERFECT</strong> / <strong style="color:#ffe9a8">GREAT</strong> / <strong style="color:#9ee9ff">OK</strong> 判定會影響得分與連擊加成，<br>
+        沒點到會扣血並中斷連擊。時間限制為 <strong>60 秒</strong>，時間到即結束並顯示總分與評級。
       </p>
       <button class="game-btn" id="startBtn">開始遊戲</button>
     </div>
@@ -202,26 +266,29 @@
   const muteBtn = document.getElementById("muteBtn");
   const scoreEl = document.getElementById("scoreVal");
   const comboEl = document.getElementById("comboVal");
+  const accEl = document.getElementById("accVal");
   const timeEl = document.getElementById("timeVal");
   const lyricTicker = document.getElementById("lyricTicker");
+  const hpFillEl = document.getElementById("hpFill");
+  const timeFillEl = document.getElementById("timeFill");
 
   // ---------------------------------------------------------------------
-  // 歌曲資料：《Twinkle Twinkle Little Star》（Jane Taylor, 1806 — 公共領域）
-  // 每個音節對應旋律中的一個音符，音節將照歌曲原本的先後順序出現，
-  // 並使用 Web Audio 依相同時間軸播放對應旋律，達到「跟著音樂依序出現」。
+  // 歌曲資料：《She'll Be Comin' Round the Mountain》
+  // 美國傳統鄉村民謠，作者不詳、公共領域素材。
+  // 註：原本要求以《Take Me Home, Country Roads》(John Denver) 示範，
+  // 但該曲版權仍受保護，無法在此重製完整歌詞，因此改用主題同為
+  // 「鄉間道路／旅程」且同樣家喻戶曉、可自由使用的美國民謠代替。
+  // 每個音節對應旋律中的一個音符，音節依歌曲原本的先後順序出現，
+  // 並用 Web Audio 依相同時間軸播放對應旋律，達到「跟著音樂依序出現」。
   // ---------------------------------------------------------------------
   const NOTE_FREQ = { C: 261.63, D: 293.66, E: 329.63, F: 349.23, G: 392.0, A: 440.0 };
 
-  const SONG_LINES = [
-    { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] },
-    { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] },
-    { text: "Up above the world so high,", notes: [["Up", "G", 1], ["a", "G", 1], ["bove", "F", 1], ["the", "F", 1], ["world", "E", 1], ["so", "E", 1], ["high", "D", 2]] },
-    { text: "Like a diamond in the sky.", notes: [["Like", "G", 1], ["a", "G", 1], ["dia", "F", 1], ["mond", "F", 1], ["in", "E", 1], ["the", "E", 1], ["sky", "D", 2]] },
-    { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] },
-    { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] }
-  ];
+  const LINE_A = { text: "She'll be comin' round the mountain when she comes,", notes: [["She'll", "C", 1], ["be", "C", 1], ["com-", "D", 1], ["in'", "E", 1], ["round", "E", 1], ["the", "E", 1], ["moun-", "F", 1], ["tain", "D", 1], ["when", "E", 1], ["she", "D", 1], ["comes", "C", 2]] };
+  const LINE_B = { text: "She'll be comin' round the mountain,", notes: [["She'll", "E", 1], ["be", "F", 1], ["com-", "G", 1], ["in'", "G", 1], ["round", "G", 1], ["the", "F", 1], ["moun-", "E", 1], ["tain", "D", 2]] };
 
-  const BEAT_MS = 450; // 每拍時長（節奏速度）
+  const SONG_LINES = [LINE_A, LINE_A, LINE_B, LINE_B, LINE_A];
+
+  const BEAT_MS = 420; // 每拍時長（節奏速度）
 
   // 攤平成單一序列，並記錄每個音符在歌曲中的累積起始時間（拍）
   const SONG_NOTES = [];
@@ -238,10 +305,19 @@
   const LOOP_MS = TOTAL_BEATS * BEAT_MS; // 一輪完整歌曲的長度（會反覆播放至 60 秒結束）
 
   const GAME_SECONDS = 60;
-  const APPROACH_MS = 800;   // 音符圈縮小到定位所需時間
+  const APPROACH_MS = 800;   // 音符圈縮小到定位所需時間（判定基準點）
   const HIT_WINDOW_MS = 380; // 縮小到定位後，可點擊得分的寬容時間
-  const MAX_TARGETS = 10;
+  const PERFECT_ERR_MS = 100; // 判定誤差在此範圍內 => PERFECT
+  const GREAT_ERR_MS = 220;   // 判定誤差在此範圍內 => GREAT，其餘 => OK
+  const MAX_TARGETS = 12;
   const BASE_RADIUS = 34;
+
+  const JUDGEMENT_INFO = {
+    PERFECT: { base: 300, hp: 2, color: "#ff9ecb" },
+    GREAT: { base: 100, hp: 1, color: "#ffe9a8" },
+    OK: { base: 50, hp: 0, color: "#9ee9ff" },
+    MISS: { base: 0, hp: -8, color: "#8f8899" }
+  };
 
   const COLORS = [
     ["#ff6fae", "#ff9ecb"],
@@ -255,11 +331,19 @@
   let score = 0;
   let combo = 0;
   let maxCombo = 0;
+  let hp = 100;
   let timeLeft = GAME_SECONDS;
   let targets = [];
   let popEffects = [];
+  let particles = [];
+  let comboBanners = [];
   let rafId = null;
   let countdownId = null;
+
+  // 判定統計（用於準度與最終評級）
+  let judgedCount = 0;
+  let accuracyPoints = 0;
+  let counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
 
   // ---- Web Audio：即時合成的旋律播放 ----
   let audioCtx = null;
@@ -271,6 +355,7 @@
   let currentLineIndex = -1;
 
   function rand(min, max) { return Math.random() * (max - min) + min; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   function ensureAudioContext() {
     if (!audioCtx) {
@@ -322,19 +407,34 @@
     return a0;
   }
 
+  function updateHUD() {
+    scoreEl.textContent = String(score);
+    comboEl.textContent = String(combo);
+    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 100;
+    accEl.textContent = acc.toFixed(1);
+    hpFillEl.style.width = hp + "%";
+    hpFillEl.className = "bar-fill " + (hp <= 25 ? "danger" : hp <= 55 ? "warn" : "");
+  }
+
   function resetState() {
     score = 0;
     combo = 0;
     maxCombo = 0;
+    hp = 100;
     timeLeft = GAME_SECONDS;
     targets = [];
     popEffects = [];
+    particles = [];
+    comboBanners = [];
     nextSpawnIndex = 0;
     currentLineIndex = -1;
-    scoreEl.textContent = "0";
-    comboEl.textContent = "0";
+    judgedCount = 0;
+    accuracyPoints = 0;
+    counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
     timeEl.textContent = String(GAME_SECONDS);
+    timeFillEl.style.width = "100%";
     lyricTicker.textContent = SONG_LINES[0].text;
+    updateHUD();
   }
 
   function absoluteStartMs(index) {
@@ -344,13 +444,15 @@
   }
 
   function spawnTargetFromNote(note) {
-    const r = BASE_RADIUS;
+    const held = note.beats >= 2;
+    const r = held ? BASE_RADIUS * 1.2 : BASE_RADIUS;
     const margin = r + 20;
     const x = rand(margin, W - margin);
     const y = rand(margin + 20, H - margin);
     const color = COLORS[note.lineIndex % COLORS.length];
     targets.push({
       x, y, r,
+      held,
       char: note.syllable,
       color,
       spawnAt: performance.now(),
@@ -367,20 +469,63 @@
     popEffects.push({ x, y, text, color, startAt: performance.now(), life: 650 });
   }
 
+  function spawnParticles(x, y, color) {
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n + rand(-0.2, 0.2);
+      const speed = rand(60, 160);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: color[1],
+        startAt: performance.now(),
+        life: 500
+      });
+    }
+  }
+
+  function showComboBanner(n) {
+    comboBanners.push({ text: n + " COMBO!", startAt: performance.now(), life: 800 });
+  }
+
+  function judge(target, now) {
+    const elapsed = now - target.spawnAt;
+    const absErr = Math.abs(elapsed - APPROACH_MS);
+    if (absErr <= PERFECT_ERR_MS) return "PERFECT";
+    if (absErr <= GREAT_ERR_MS) return "GREAT";
+    return "OK";
+  }
+
   function handleHit(target, now) {
     target.hit = true;
-    score += 1;
+    const j = judge(target, now);
+    const info = JUDGEMENT_INFO[j];
+
     combo += 1;
     if (combo > maxCombo) maxCombo = combo;
-    scoreEl.textContent = String(score);
-    comboEl.textContent = String(combo);
-    addPopEffect(target.x, target.y, "+1", target.color[0]);
+    const comboBonus = Math.min(combo, 20) * 2;
+    const gained = info.base + comboBonus;
+    score += gained;
+
+    judgedCount += 1;
+    accuracyPoints += info.base;
+    counts[j] += 1;
+    hp = clamp(hp + info.hp, 0, 100);
+
+    updateHUD();
+    addPopEffect(target.x, target.y, j + " +" + gained, info.color);
+    spawnParticles(target.x, target.y, target.color);
+    if (combo > 0 && combo % 10 === 0) showComboBanner(combo);
   }
 
   function handleMiss(target) {
     combo = 0;
-    comboEl.textContent = "0";
-    addPopEffect(target.x, target.y, "MISS", "#888");
+    judgedCount += 1;
+    counts.MISS += 1;
+    hp = clamp(hp + JUDGEMENT_INFO.MISS.hp, 0, 100);
+    updateHUD();
+    addPopEffect(target.x, target.y, "MISS", JUDGEMENT_INFO.MISS.color);
   }
 
   function pointerToCanvas(clientX, clientY) {
@@ -463,6 +608,17 @@
     ctx.stroke();
     ctx.globalAlpha = 1;
 
+    // 長音（held）音符加上第二道光環，視覺上區隔延音字
+    if (t.held) {
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     // 本體圓圈
     const grad = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.r);
     grad.addColorStop(0, t.color[1]);
@@ -477,7 +633,7 @@
 
     // 歌詞音節文字
     ctx.fillStyle = "#1b1030";
-    ctx.font = "bold 18px 'Microsoft JhengHei', sans-serif";
+    ctx.font = "bold 17px 'Microsoft JhengHei', sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(t.char, t.x, t.y + 1);
@@ -490,9 +646,44 @@
       ctx.save();
       ctx.globalAlpha = 1 - t;
       ctx.fillStyle = p.color;
-      ctx.font = "bold 20px 'Microsoft JhengHei', sans-serif";
+      ctx.font = "bold 18px 'Microsoft JhengHei', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(p.text, p.x, p.y - t * 30 - 10);
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(now) {
+    particles = particles.filter((p) => now - p.startAt < p.life);
+    for (const p of particles) {
+      const t = (now - p.startAt) / p.life;
+      const px = p.x + p.vx * (t * (p.life / 1000));
+      const py = p.y + p.vy * (t * (p.life / 1000)) + 40 * t * t; // 些微重力
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(px, py, 3 * (1 - t) + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawComboBanners(now) {
+    comboBanners = comboBanners.filter((b) => now - b.startAt < b.life);
+    for (const b of comboBanners) {
+      const t = (now - b.startAt) / b.life;
+      const scale = 1 + (1 - t) * 0.3;
+      ctx.save();
+      ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+      ctx.translate(W / 2, 70);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#ffd76f";
+      ctx.font = "bold 34px 'Microsoft JhengHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "rgba(255, 215, 111, 0.8)";
+      ctx.shadowBlur = 16;
+      ctx.fillText(b.text, 0, 0);
       ctx.restore();
     }
   }
@@ -503,7 +694,7 @@
     const elapsedAudioMs = (audioCtx.currentTime - songStartAudioTime) * 1000;
 
     // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現
-    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex)) {
+    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex) && targets.length < MAX_TARGETS) {
       spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length]);
       nextSpawnIndex++;
     }
@@ -519,7 +710,9 @@
 
     drawBackground();
     for (const t of targets) drawTarget(t, now);
+    drawParticles(now);
     drawPopEffects(now);
+    drawComboBanners(now);
 
     rafId = requestAnimationFrame(gameLoop);
   }
@@ -528,6 +721,7 @@
     countdownId = setInterval(() => {
       timeLeft -= 1;
       timeEl.textContent = String(Math.max(timeLeft, 0));
+      timeFillEl.style.width = clamp((timeLeft / GAME_SECONDS) * 100, 0, 100) + "%";
       if (timeLeft <= 0) {
         endGame();
       }
@@ -546,6 +740,16 @@
     rafId = requestAnimationFrame(gameLoop);
   }
 
+  function computeRank() {
+    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 0;
+    if (acc >= 95 && counts.MISS === 0) return { grade: "SS", color: "#ffd76f" };
+    if (acc >= 90) return { grade: "S", color: "#ff9ecb" };
+    if (acc >= 80) return { grade: "A", color: "#a6ff6f" };
+    if (acc >= 70) return { grade: "B", color: "#9ee9ff" };
+    if (acc >= 50) return { grade: "C", color: "#c88bff" };
+    return { grade: "D", color: "#8f8899" };
+  }
+
   function endGame() {
     state = "ended";
     clearInterval(countdownId);
@@ -553,10 +757,19 @@
     targets = [];
     drawBackground();
 
+    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 0;
+    const rank = computeRank();
+
     overlay.innerHTML = `
       <p>時間到！這是你這回合的表現：</p>
       <div class="result-score">總分：${score} 分</div>
-      <div class="result-combo">最高連擊：${maxCombo}</div>
+      <div class="result-rank" style="color:${rank.color}">${rank.grade}</div>
+      <div class="result-grid">
+        <div><span class="k">最高連擊</span><span class="v">${maxCombo}</span></div>
+        <div><span class="k">準確度</span><span class="v">${acc.toFixed(1)}%</span></div>
+        <div><span class="k">PERFECT / GREAT / OK</span><span class="v">${counts.PERFECT} / ${counts.GREAT} / ${counts.OK}</span></div>
+        <div><span class="k">MISS</span><span class="v">${counts.MISS}</span></div>
+      </div>
       <button class="game-btn" id="restartBtn">重新開始</button>
     `;
     overlay.classList.remove("hidden");
