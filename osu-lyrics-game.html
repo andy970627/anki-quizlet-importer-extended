@@ -15,6 +15,7 @@
   }
   * { box-sizing: border-box; }
   body {
+    position: relative;
     margin: 0;
     min-height: 100vh;
     display: flex;
@@ -25,6 +26,22 @@
     font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
     color: var(--text);
     padding: 16px;
+    overflow-x: hidden;
+  }
+  /* 類似 Better Lyrics 擴充套件的氛圍背景光暈，慢速旋轉的柔焦色塊 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -25%;
+    background: conic-gradient(from 0deg, #ff6fae, #6fd8ff, #ffd76f, #a6ff6f, #c88bff, #ff6fae);
+    filter: blur(120px) opacity(0.16);
+    z-index: -1;
+    animation: ambientRotate 40s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes ambientRotate { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    body::before { animation: none; }
   }
   h1 {
     margin: 0 0 4px;
@@ -119,14 +136,59 @@
     width: 100%;
     max-width: 800px;
     text-align: center;
-    padding: 6px 10px;
-    margin-bottom: 8px;
-    font-size: 1.05rem;
-    color: #d9c9ff;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #9d8fc9;
     background: rgba(255,255,255,0.05);
     border-radius: 8px;
-    min-height: 1.6em;
+    min-height: 1.8em;
     letter-spacing: 0.5px;
+    line-height: 1.5;
+  }
+  /* 卡拉OK式逐字跟讀高亮，參考 Better Lyrics 等擴充套件的呈現風格 */
+  #lyricTicker .syl {
+    display: inline-block;
+    opacity: 0.45;
+    color: #9d8fc9;
+    transition: color 0.15s ease, opacity 0.15s ease, text-shadow 0.2s ease, transform 0.2s ease;
+  }
+  #lyricTicker .syl.sung {
+    opacity: 0.9;
+    color: var(--accent2);
+  }
+  #lyricTicker .syl.active {
+    opacity: 1;
+    color: #ffffff;
+    text-shadow: 0 0 10px var(--accent), 0 0 22px var(--accent2);
+    transform: translateY(-2px) scale(1.14);
+    animation: sylPop 0.28s ease;
+  }
+  @keyframes sylPop {
+    0% { transform: translateY(0) scale(0.85); }
+    60% { transform: translateY(-4px) scale(1.2); }
+    100% { transform: translateY(-2px) scale(1.14); }
+  }
+  #keyHint {
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: #8b7fb0;
+    margin-bottom: 8px;
+  }
+  #keyHint kbd {
+    display: inline-block;
+    min-width: 1.4em;
+    padding: 1px 7px;
+    margin: 0 2px;
+    border-radius: 5px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: var(--text);
+    font-weight: bold;
+    font-family: inherit;
   }
   #gameWrap {
     position: relative;
@@ -234,6 +296,7 @@
   </div>
 
   <div id="lyricTicker">按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！</div>
+  <div id="keyHint">滑鼠／手指移到音符上瞄準，按 <kbd>Z</kbd> 或 <kbd>X</kbd> 擊發（也可直接點擊／觸控）</div>
 
   <div id="gameWrap">
     <canvas id="gameCanvas" width="800" height="500"></canvas>
@@ -241,7 +304,8 @@
       <p>
         遊戲開始後會播放《She'll Be Comin' Round the Mountain》的旋律，<br>
         音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
-        請盡量在音符圈縮小到定位的瞬間點擊：<br>
+        將準星移到音符上，並在音符圈縮小到定位的瞬間按下 <strong>Z</strong> 或 <strong>X</strong> 鍵擊發<br>
+        （滑鼠點擊／觸控也可以）：<br>
         <strong style="color:#ff9ecb">PERFECT</strong> / <strong style="color:#ffe9a8">GREAT</strong> / <strong style="color:#9ee9ff">OK</strong> 判定會影響得分與連擊加成，<br>
         沒點到會扣血並中斷連擊。時間限制為 <strong>60 秒</strong>，時間到即結束並顯示總分與評級。
       </p>
@@ -249,7 +313,7 @@
     </div>
   </div>
 
-  <footer>使用滑鼠或觸控點擊音符即可得分 · 純前端 HTML / CSS / JavaScript 製作</footer>
+  <footer>準星瞄準 + Z / X 鍵擊發（或滑鼠／觸控點擊）即可得分 · 純前端 HTML / CSS / JavaScript 製作</footer>
 </div>
 
 <script>
@@ -354,6 +418,12 @@
   let nextSpawnIndex = 0;     // 下一個要出現的音符（依序、累積索引）
   let currentLineIndex = -1;
 
+  // 卡拉OK式逐字歌詞高亮
+  let karaokeSpans = []; // [{ el, absStart, absEnd }]
+
+  // 準星位置（滑鼠移動更新，供 Z / X 鍵擊發使用）
+  let aimPoint = { x: W / 2, y: H / 2 };
+
   function rand(min, max) { return Math.random() * (max - min) + min; }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -433,6 +503,7 @@
     counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
     timeEl.textContent = String(GAME_SECONDS);
     timeFillEl.style.width = "100%";
+    karaokeSpans = [];
     lyricTicker.textContent = SONG_LINES[0].text;
     updateHUD();
   }
@@ -443,7 +514,32 @@
     return loop * LOOP_MS + note.startBeat * BEAT_MS;
   }
 
-  function spawnTargetFromNote(note) {
+  // 依目前整句歌詞，重建逐字高亮用的 <span>，仿照 Better Lyrics 等擴充套件的卡拉OK效果
+  function rebuildKaraokeLine(note, loopIdx) {
+    const lineNotes = SONG_NOTES.filter((n) => n.lineIndex === note.lineIndex);
+    lyricTicker.innerHTML = "";
+    karaokeSpans = lineNotes.map((n) => {
+      const el = document.createElement("span");
+      el.className = "syl";
+      el.textContent = n.syllable;
+      lyricTicker.appendChild(el);
+      lyricTicker.appendChild(document.createTextNode(" "));
+      return {
+        el,
+        absStart: loopIdx * LOOP_MS + n.startBeat * BEAT_MS,
+        absEnd: loopIdx * LOOP_MS + (n.startBeat + n.beats) * BEAT_MS
+      };
+    });
+  }
+
+  function updateKaraokeHighlight(elapsedAudioMs) {
+    for (const s of karaokeSpans) {
+      const cls = elapsedAudioMs >= s.absEnd ? "syl sung" : elapsedAudioMs >= s.absStart ? "syl active" : "syl";
+      if (s.el.className !== cls) s.el.className = cls;
+    }
+  }
+
+  function spawnTargetFromNote(note, loopIdx) {
     const held = note.beats >= 2;
     const r = held ? BASE_RADIUS * 1.2 : BASE_RADIUS;
     const margin = r + 20;
@@ -461,7 +557,7 @@
 
     if (note.lineIndex !== currentLineIndex) {
       currentLineIndex = note.lineIndex;
-      lyricTicker.textContent = note.lineText;
+      rebuildKaraokeLine(note, loopIdx);
     }
   }
 
@@ -538,9 +634,9 @@
     };
   }
 
-  function onPointerDown(clientX, clientY) {
+  // 在畫布座標 (x, y) 嘗試擊中音符：滑鼠／觸控點擊，或 Z / X 鍵配合準星，都會呼叫這裡
+  function attemptHit(x, y) {
     if (state !== "playing") return;
-    const { x, y } = pointerToCanvas(clientX, clientY);
     const now = performance.now();
 
     // 由最新出現的音符開始檢查，較符合直覺
@@ -556,7 +652,16 @@
     }
   }
 
+  function onPointerDown(clientX, clientY) {
+    const { x, y } = pointerToCanvas(clientX, clientY);
+    aimPoint = { x, y };
+    attemptHit(x, y);
+  }
+
   canvas.addEventListener("mousedown", (e) => onPointerDown(e.clientX, e.clientY));
+  canvas.addEventListener("mousemove", (e) => {
+    aimPoint = pointerToCanvas(e.clientX, e.clientY);
+  });
   canvas.addEventListener(
     "touchstart",
     (e) => {
@@ -566,6 +671,23 @@
     },
     { passive: false }
   );
+  canvas.addEventListener(
+    "touchmove",
+    (e) => {
+      const touch = e.changedTouches[0];
+      if (touch) aimPoint = pointerToCanvas(touch.clientX, touch.clientY);
+    },
+    { passive: true }
+  );
+
+  // Z / X 鍵：瞄準用滑鼠／觸控移動，擊發用鍵盤，符合 osu! 一類節奏遊戲的操作習慣
+  window.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+    if (key !== "z" && key !== "x") return;
+    if (state !== "playing") return;
+    e.preventDefault();
+    attemptHit(aimPoint.x, aimPoint.y);
+  });
 
   muteBtn.addEventListener("click", () => {
     audioEnabled = !audioEnabled;
@@ -669,6 +791,26 @@
     }
   }
 
+  function drawAimReticle() {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(aimPoint.x, aimPoint.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(aimPoint.x - 16, aimPoint.y);
+    ctx.lineTo(aimPoint.x - 6, aimPoint.y);
+    ctx.moveTo(aimPoint.x + 6, aimPoint.y);
+    ctx.lineTo(aimPoint.x + 16, aimPoint.y);
+    ctx.moveTo(aimPoint.x, aimPoint.y - 16);
+    ctx.lineTo(aimPoint.x, aimPoint.y - 6);
+    ctx.moveTo(aimPoint.x, aimPoint.y + 6);
+    ctx.lineTo(aimPoint.x, aimPoint.y + 16);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawComboBanners(now) {
     comboBanners = comboBanners.filter((b) => now - b.startAt < b.life);
     for (const b of comboBanners) {
@@ -695,9 +837,12 @@
 
     // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現
     while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex) && targets.length < MAX_TARGETS) {
-      spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length]);
+      const loopIdx = Math.floor(nextSpawnIndex / SONG_NOTES.length);
+      spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length], loopIdx);
       nextSpawnIndex++;
     }
+
+    updateKaraokeHighlight(elapsedAudioMs);
 
     // 移除逾時未點中的音符（記為 MISS）
     for (const t of targets) {
@@ -713,6 +858,7 @@
     drawParticles(now);
     drawPopEffects(now);
     drawComboBanners(now);
+    drawAimReticle();
 
     rafId = requestAnimationFrame(gameLoop);
   }
