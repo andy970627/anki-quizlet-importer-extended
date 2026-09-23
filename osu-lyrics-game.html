@@ -27,10 +27,16 @@
     padding: 16px;
   }
   h1 {
-    margin: 0 0 12px;
+    margin: 0 0 4px;
     font-size: 1.6rem;
     letter-spacing: 2px;
     text-shadow: 0 0 12px rgba(111, 216, 255, 0.6);
+  }
+  .subtitle {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: #b7a6e0;
+    letter-spacing: 1px;
   }
   #app {
     width: 100%;
@@ -48,6 +54,7 @@
     margin-bottom: 8px;
     font-size: 1.1rem;
     font-weight: bold;
+    gap: 8px;
   }
   #hud .badge {
     background: var(--panel);
@@ -58,18 +65,28 @@
   #hud .badge.score { color: var(--accent); }
   #hud .badge.time { color: var(--accent2); }
   #hud .badge.combo { color: #ffd76f; }
+  #muteBtn {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 1.1rem;
+    padding: 6px 12px;
+    cursor: pointer;
+    line-height: 1;
+  }
   #lyricTicker {
     width: 100%;
     max-width: 800px;
     text-align: center;
     padding: 6px 10px;
     margin-bottom: 8px;
-    font-size: 1rem;
+    font-size: 1.05rem;
     color: #d9c9ff;
     background: rgba(255,255,255,0.05);
     border-radius: 8px;
     min-height: 1.6em;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
   }
   #gameWrap {
     position: relative;
@@ -144,20 +161,23 @@
 <body>
 <div id="app">
   <h1>♪ 節奏歌詞打擊遊戲 ♪</h1>
+  <div class="subtitle">歌曲：Twinkle Twinkle Little Star（經典英文兒歌，公共領域）</div>
 
   <div id="hud">
     <div class="badge score">分數：<span id="scoreVal">0</span></div>
     <div class="badge combo">連擊：<span id="comboVal">0</span></div>
     <div class="badge time">剩餘時間：<span id="timeVal">60</span> 秒</div>
+    <button id="muteBtn" title="切換音樂">🔊</button>
   </div>
 
-  <div id="lyricTicker">按下「開始遊戲」，跟著歌詞節奏點擊出現的音符吧！</div>
+  <div id="lyricTicker">按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！</div>
 
   <div id="gameWrap">
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     <div id="overlay">
       <p>
-        遊戲開始後，畫面上會隨機出現音符圓圈，圈內會顯示歌詞文字。<br>
+        遊戲開始後會播放《Twinkle Twinkle Little Star》的旋律，<br>
+        音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
         請在音符圈縮小到定位時盡快點擊，點中即可得 1 分！<br>
         時間限制為 <strong>60 秒</strong>，時間到即結束並顯示總分。
       </p>
@@ -179,32 +199,49 @@
 
   const overlay = document.getElementById("overlay");
   const startBtn = document.getElementById("startBtn");
+  const muteBtn = document.getElementById("muteBtn");
   const scoreEl = document.getElementById("scoreVal");
   const comboEl = document.getElementById("comboVal");
   const timeEl = document.getElementById("timeVal");
   const lyricTicker = document.getElementById("lyricTicker");
 
-  // 內建示範歌詞（耳熟能詳的兒歌「小星星」中文版，公共領域素材）
-  const LYRIC_LINES = [
-    "一閃一閃亮晶晶",
-    "滿天都是小星星",
-    "掛在天空放光明",
-    "好像許多小眼睛",
-    "一閃一閃亮晶晶",
-    "滿天都是小星星"
+  // ---------------------------------------------------------------------
+  // 歌曲資料：《Twinkle Twinkle Little Star》（Jane Taylor, 1806 — 公共領域）
+  // 每個音節對應旋律中的一個音符，音節將照歌曲原本的先後順序出現，
+  // 並使用 Web Audio 依相同時間軸播放對應旋律，達到「跟著音樂依序出現」。
+  // ---------------------------------------------------------------------
+  const NOTE_FREQ = { C: 261.63, D: 293.66, E: 329.63, F: 349.23, G: 392.0, A: 440.0 };
+
+  const SONG_LINES = [
+    { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] },
+    { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] },
+    { text: "Up above the world so high,", notes: [["Up", "G", 1], ["a", "G", 1], ["bove", "F", 1], ["the", "F", 1], ["world", "E", 1], ["so", "E", 1], ["high", "D", 2]] },
+    { text: "Like a diamond in the sky.", notes: [["Like", "G", 1], ["a", "G", 1], ["dia", "F", 1], ["mond", "F", 1], ["in", "E", 1], ["the", "E", 1], ["sky", "D", 2]] },
+    { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] },
+    { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] }
   ];
 
-  // 拆成單字詞池，作為音符圈上顯示的文字
-  const WORD_POOL = Array.from(new Set(LYRIC_LINES.join("").split("")));
+  const BEAT_MS = 450; // 每拍時長（節奏速度）
+
+  // 攤平成單一序列，並記錄每個音符在歌曲中的累積起始時間（拍）
+  const SONG_NOTES = [];
+  (function buildSongNotes() {
+    let beatCursor = 0;
+    SONG_LINES.forEach((line, lineIndex) => {
+      line.notes.forEach(([syllable, note, beats]) => {
+        SONG_NOTES.push({ syllable, note, beats, lineIndex, startBeat: beatCursor, lineText: line.text });
+        beatCursor += beats;
+      });
+    });
+  })();
+  const TOTAL_BEATS = SONG_NOTES.reduce((sum, n) => sum + n.beats, 0);
+  const LOOP_MS = TOTAL_BEATS * BEAT_MS; // 一輪完整歌曲的長度（會反覆播放至 60 秒結束）
 
   const GAME_SECONDS = 60;
-  const APPROACH_MS = 950;   // 音符圈縮小到定位所需時間
-  const HIT_WINDOW_MS = 420; // 縮小到定位後，可點擊得分的寬容時間
-  const MAX_TARGETS = 5;
+  const APPROACH_MS = 800;   // 音符圈縮小到定位所需時間
+  const HIT_WINDOW_MS = 380; // 縮小到定位後，可點擊得分的寬容時間
+  const MAX_TARGETS = 10;
   const BASE_RADIUS = 34;
-  const SPAWN_MIN_MS = 550;
-  const SPAWN_MAX_MS = 950;
-  const LINE_CHANGE_MS = 9000;
 
   const COLORS = [
     ["#ff6fae", "#ff9ecb"],
@@ -221,15 +258,69 @@
   let timeLeft = GAME_SECONDS;
   let targets = [];
   let popEffects = [];
-  let nextSpawnAt = 0;
-  let lineIndex = 0;
-  let lastLineChangeAt = 0;
   let rafId = null;
   let countdownId = null;
-  let startTime = 0;
+
+  // ---- Web Audio：即時合成的旋律播放 ----
+  let audioCtx = null;
+  let masterGain = null;
+  let audioEnabled = true;
+  let scheduledOscillators = [];
+  let songStartAudioTime = 0; // AudioContext 時鐘上的歌曲起點（秒）
+  let nextSpawnIndex = 0;     // 下一個要出現的音符（依序、累積索引）
+  let currentLineIndex = -1;
 
   function rand(min, max) { return Math.random() * (max - min) + min; }
-  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = audioEnabled ? 1 : 0;
+      masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playNote(freq, startAt, durSec) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(0.2, startAt + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durSec);
+    osc.connect(gain).connect(masterGain);
+    osc.start(startAt);
+    osc.stop(startAt + durSec + 0.03);
+    scheduledOscillators.push(osc);
+  }
+
+  function stopAllAudio() {
+    scheduledOscillators.forEach((o) => {
+      try { o.stop(); } catch (e) { /* 已停止則忽略 */ }
+    });
+    scheduledOscillators = [];
+  }
+
+  // 預先排程整首歌曲（含重複輪播）在 Web Audio 的精準時間軸上
+  function scheduleSong(totalDurationMs) {
+    const ctxNow = ensureAudioContext();
+    const a0 = ctxNow.currentTime + 0.15; // 留一點緩衝時間再開始播放
+    const loops = Math.ceil(totalDurationMs / LOOP_MS) + 1;
+    for (let loop = 0; loop < loops; loop++) {
+      for (const n of SONG_NOTES) {
+        const noteStartMs = loop * LOOP_MS + n.startBeat * BEAT_MS;
+        if (noteStartMs > totalDurationMs) continue;
+        const startAt = a0 + noteStartMs / 1000;
+        const durSec = (n.beats * BEAT_MS) / 1000 * 0.85;
+        playNote(NOTE_FREQ[n.note], startAt, durSec);
+      }
+    }
+    return a0;
+  }
 
   function resetState() {
     score = 0;
@@ -238,26 +329,38 @@
     timeLeft = GAME_SECONDS;
     targets = [];
     popEffects = [];
-    lineIndex = 0;
+    nextSpawnIndex = 0;
+    currentLineIndex = -1;
     scoreEl.textContent = "0";
     comboEl.textContent = "0";
     timeEl.textContent = String(GAME_SECONDS);
-    lyricTicker.textContent = LYRIC_LINES[0];
+    lyricTicker.textContent = SONG_LINES[0].text;
   }
 
-  function spawnTarget(now) {
+  function absoluteStartMs(index) {
+    const loop = Math.floor(index / SONG_NOTES.length);
+    const note = SONG_NOTES[index % SONG_NOTES.length];
+    return loop * LOOP_MS + note.startBeat * BEAT_MS;
+  }
+
+  function spawnTargetFromNote(note) {
     const r = BASE_RADIUS;
     const margin = r + 20;
     const x = rand(margin, W - margin);
     const y = rand(margin + 20, H - margin);
-    const color = pick(COLORS);
+    const color = COLORS[note.lineIndex % COLORS.length];
     targets.push({
       x, y, r,
-      char: pick(WORD_POOL),
+      char: note.syllable,
       color,
-      spawnAt: now,
+      spawnAt: performance.now(),
       hit: false
     });
+
+    if (note.lineIndex !== currentLineIndex) {
+      currentLineIndex = note.lineIndex;
+      lyricTicker.textContent = note.lineText;
+    }
   }
 
   function addPopEffect(x, y, text, color) {
@@ -319,6 +422,12 @@
     { passive: false }
   );
 
+  muteBtn.addEventListener("click", () => {
+    audioEnabled = !audioEnabled;
+    muteBtn.textContent = audioEnabled ? "🔊" : "🔇";
+    if (masterGain) masterGain.gain.value = audioEnabled ? 1 : 0;
+  });
+
   function drawBackground() {
     ctx.clearRect(0, 0, W, H);
     ctx.save();
@@ -366,9 +475,9 @@
     ctx.strokeStyle = "rgba(255,255,255,0.8)";
     ctx.stroke();
 
-    // 歌詞文字
+    // 歌詞音節文字
     ctx.fillStyle = "#1b1030";
-    ctx.font = "bold 24px 'Microsoft JhengHei', sans-serif";
+    ctx.font = "bold 18px 'Microsoft JhengHei', sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(t.char, t.x, t.y + 1);
@@ -388,21 +497,15 @@
     }
   }
 
-  function updateLyricTicker(now) {
-    if (now - lastLineChangeAt >= LINE_CHANGE_MS) {
-      lastLineChangeAt = now;
-      lineIndex = (lineIndex + 1) % LYRIC_LINES.length;
-      lyricTicker.textContent = LYRIC_LINES[lineIndex];
-    }
-  }
-
-  function gameLoop(ts) {
+  function gameLoop() {
     if (state !== "playing") return;
     const now = performance.now();
+    const elapsedAudioMs = (audioCtx.currentTime - songStartAudioTime) * 1000;
 
-    if (now >= nextSpawnAt && targets.length < MAX_TARGETS) {
-      spawnTarget(now);
-      nextSpawnAt = now + rand(SPAWN_MIN_MS, SPAWN_MAX_MS);
+    // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現
+    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex)) {
+      spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length]);
+      nextSpawnIndex++;
     }
 
     // 移除逾時未點中的音符（記為 MISS）
@@ -413,8 +516,6 @@
       }
     }
     targets = targets.filter((t) => !t.hit && !t.expired);
-
-    updateLyricTicker(now);
 
     drawBackground();
     for (const t of targets) drawTarget(t, now);
@@ -437,10 +538,10 @@
     resetState();
     state = "playing";
     overlay.classList.add("hidden");
-    const now = performance.now();
-    nextSpawnAt = now;
-    lastLineChangeAt = now;
-    startTime = now;
+
+    stopAllAudio();
+    songStartAudioTime = scheduleSong((GAME_SECONDS + 2) * 1000);
+
     startCountdown();
     rafId = requestAnimationFrame(gameLoop);
   }
