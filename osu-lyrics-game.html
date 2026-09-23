@@ -274,7 +274,7 @@
 <body>
 <div id="app">
   <h1>♪ 節奏歌詞打擊遊戲 ♪</h1>
-  <div class="subtitle">歌曲：She'll Be Comin' Round the Mountain（美國經典鄉村民謠，公共領域）</div>
+  <div class="subtitle">歌曲：Twinkle Twinkle Little Star（經典英文兒歌，公共領域）</div>
 
   <div id="hud">
     <div class="badge score">分數：<span id="scoreVal">0</span></div>
@@ -302,7 +302,7 @@
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     <div id="overlay">
       <p>
-        遊戲開始後會播放《She'll Be Comin' Round the Mountain》的旋律，<br>
+        遊戲開始後會播放《Twinkle Twinkle Little Star》的旋律，<br>
         音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
         將準星移到音符上，並在音符圈縮小到定位的瞬間按下 <strong>Z</strong> 或 <strong>X</strong> 鍵擊發<br>
         （滑鼠點擊／觸控也可以）：<br>
@@ -337,20 +337,18 @@
   const timeFillEl = document.getElementById("timeFill");
 
   // ---------------------------------------------------------------------
-  // 歌曲資料：《She'll Be Comin' Round the Mountain》
-  // 美國傳統鄉村民謠，作者不詳、公共領域素材。
-  // 註：原本要求以《Take Me Home, Country Roads》(John Denver) 示範，
-  // 但該曲版權仍受保護，無法在此重製完整歌詞，因此改用主題同為
-  // 「鄉間道路／旅程」且同樣家喻戶曉、可自由使用的美國民謠代替。
+  // 歌曲資料：《Twinkle Twinkle Little Star》（Jane Taylor, 1806 — 公共領域）
   // 每個音節對應旋律中的一個音符，音節依歌曲原本的先後順序出現，
   // 並用 Web Audio 依相同時間軸播放對應旋律，達到「跟著音樂依序出現」。
   // ---------------------------------------------------------------------
   const NOTE_FREQ = { C: 261.63, D: 293.66, E: 329.63, F: 349.23, G: 392.0, A: 440.0 };
 
-  const LINE_A = { text: "She'll be comin' round the mountain when she comes,", notes: [["She'll", "C", 1], ["be", "C", 1], ["com-", "D", 1], ["in'", "E", 1], ["round", "E", 1], ["the", "E", 1], ["moun-", "F", 1], ["tain", "D", 1], ["when", "E", 1], ["she", "D", 1], ["comes", "C", 2]] };
-  const LINE_B = { text: "She'll be comin' round the mountain,", notes: [["She'll", "E", 1], ["be", "F", 1], ["com-", "G", 1], ["in'", "G", 1], ["round", "G", 1], ["the", "F", 1], ["moun-", "E", 1], ["tain", "D", 2]] };
+  const LINE_A = { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] };
+  const LINE_B = { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] };
+  const LINE_C = { text: "Up above the world so high,", notes: [["Up", "G", 1], ["a", "G", 1], ["bove", "F", 1], ["the", "F", 1], ["world", "E", 1], ["so", "E", 1], ["high", "D", 2]] };
+  const LINE_D = { text: "Like a diamond in the sky.", notes: [["Like", "G", 1], ["a", "G", 1], ["dia", "F", 1], ["mond", "F", 1], ["in", "E", 1], ["the", "E", 1], ["sky", "D", 2]] };
 
-  const SONG_LINES = [LINE_A, LINE_A, LINE_B, LINE_B, LINE_A];
+  const SONG_LINES = [LINE_A, LINE_B, LINE_C, LINE_D, LINE_A, LINE_B];
 
   const BEAT_MS = 420; // 每拍時長（節奏速度）
 
