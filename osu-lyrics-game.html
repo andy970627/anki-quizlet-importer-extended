@@ -463,7 +463,8 @@
   // 預先排程整首歌曲（含重複輪播）在 Web Audio 的精準時間軸上
   function scheduleSong(totalDurationMs) {
     const ctxNow = ensureAudioContext();
-    const a0 = ctxNow.currentTime + 0.15; // 留一點緩衝時間再開始播放
+    // 留出至少一個音符「縮圈」動畫的時間，讓第一個音符也能準時對上音樂
+    const a0 = ctxNow.currentTime + APPROACH_MS / 1000 + 0.05;
     const loops = Math.ceil(totalDurationMs / LOOP_MS) + 1;
     for (let loop = 0; loop < loops; loop++) {
       for (const n of SONG_NOTES) {
@@ -835,8 +836,9 @@
     const now = performance.now();
     const elapsedAudioMs = (audioCtx.currentTime - songStartAudioTime) * 1000;
 
-    // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現
-    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex) && targets.length < MAX_TARGETS) {
+    // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現。
+    // 音符要提前 APPROACH_MS 出現，讓縮圈動畫縮到定位的瞬間，正好對上音樂實際播放該音的時間點。
+    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex) - APPROACH_MS && targets.length < MAX_TARGETS) {
       const loopIdx = Math.floor(nextSpawnIndex / SONG_NOTES.length);
       spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length], loopIdx);
       nextSpawnIndex++;
