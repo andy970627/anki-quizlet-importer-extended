@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>音符歌詞打擊遊戲</title>
+<style>
+  :root {
+    --bg1: #1b1030;
+    --bg2: #2d1b4e;
+    --accent: #ff6fae;
+    --accent2: #6fd8ff;
+    --text: #f5f2ff;
+    --panel: rgba(20, 10, 40, 0.72);
+  }
+  * { box-sizing: border-box; }
+  body {
+    position: relative;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 0%, var(--bg2), var(--bg1) 70%);
+    font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--text);
+    padding: 16px;
+    overflow-x: hidden;
+  }
+  /* 類似 Better Lyrics 擴充套件的氛圍背景光暈，慢速旋轉的柔焦色塊 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -25%;
+    background: conic-gradient(from 0deg, #ff6fae, #6fd8ff, #ffd76f, #a6ff6f, #c88bff, #ff6fae);
+    filter: blur(120px) opacity(0.16);
+    z-index: -1;
+    animation: ambientRotate 40s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes ambientRotate { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    body::before { animation: none; }
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.6rem;
+    letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(111, 216, 255, 0.6);
+  }
+  .subtitle {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: #b7a6e0;
+    letter-spacing: 1px;
+    text-align: center;
+  }
+  #app {
+    width: 100%;
+    max-width: 820px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #hud {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #hud .badge {
+    background: var(--panel);
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.15);
+    white-space: nowrap;
+  }
+  #hud .badge.score { color: var(--accent); }
+  #hud .badge.time { color: var(--accent2); }
+  #hud .badge.combo { color: #ffd76f; }
+  #hud .badge.acc { color: #a6ff6f; }
+  #muteBtn {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 1.1rem;
+    padding: 6px 12px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  #statusBars {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #b7a6e0;
+  }
+  .bar-row .bar-label {
+    width: 34px;
+    flex-shrink: 0;
+  }
+  .bar-track {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.12s linear, background-color 0.2s ease;
+  }
+  #hpFill { background: linear-gradient(90deg, #6fff9e, #a6ff6f); }
+  #hpFill.warn { background: linear-gradient(90deg, #ffd76f, #ffb86f); }
+  #hpFill.danger { background: linear-gradient(90deg, #ff6f6f, #ff3d5a); }
+  #timeFill { background: linear-gradient(90deg, var(--accent2), var(--accent)); width: 100%; }
+  #lyricTicker {
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #9d8fc9;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    min-height: 1.8em;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+  }
+  /* 卡拉OK式逐字跟讀高亮，參考 Better Lyrics 等擴充套件的呈現風格 */
+  #lyricTicker .syl {
+    display: inline-block;
+    opacity: 0.45;
+    color: #9d8fc9;
+    transition: color 0.15s ease, opacity 0.15s ease, text-shadow 0.2s ease, transform 0.2s ease;
+  }
+  #lyricTicker .syl.sung {
+    opacity: 0.9;
+    color: var(--accent2);
+  }
+  #lyricTicker .syl.active {
+    opacity: 1;
+    color: #ffffff;
+    text-shadow: 0 0 10px var(--accent), 0 0 22px var(--accent2);
+    transform: translateY(-2px) scale(1.14);
+    animation: sylPop 0.28s ease;
+  }
+  @keyframes sylPop {
+    0% { transform: translateY(0) scale(0.85); }
+    60% { transform: translateY(-4px) scale(1.2); }
+    100% { transform: translateY(-2px) scale(1.14); }
+  }
+  #keyHint {
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: #8b7fb0;
+    margin-bottom: 8px;
+  }
+  #keyHint kbd {
+    display: inline-block;
+    min-width: 1.4em;
+    padding: 1px 7px;
+    margin: 0 2px;
+    border-radius: 5px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: var(--text);
+    font-weight: bold;
+    font-family: inherit;
+  }
+  #gameWrap {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+  }
+  #gameCanvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: linear-gradient(160deg, #241640, #150c28);
+    border-radius: 16px;
+    border: 2px solid rgba(255,255,255,0.15);
+    box-shadow: 0 0 30px rgba(255, 111, 174, 0.25);
+    touch-action: none;
+    cursor: crosshair;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: rgba(10, 4, 24, 0.82);
+    border-radius: 16px;
+    padding: 20px;
+    gap: 14px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay p {
+    margin: 0;
+    max-width: 480px;
+    line-height: 1.7;
+    color: #d9c9ff;
+    font-size: 0.95rem;
+  }
+  #overlay .result-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 8px 20px;
+    text-align: left;
+    max-width: 360px;
+  }
+  #overlay .result-grid div span.k { color: #b7a6e0; font-size: 0.8rem; display: block; }
+  #overlay .result-grid div span.v { font-size: 1.1rem; font-weight: bold; }
+  #overlay .result-score {
+    font-size: 2.4rem;
+    font-weight: bold;
+    color: var(--accent);
+    text-shadow: 0 0 16px rgba(255,111,174,0.7);
+  }
+  #overlay .result-rank {
+    font-size: 3.2rem;
+    font-weight: bold;
+    line-height: 1;
+    text-shadow: 0 0 20px currentColor;
+  }
+  button.game-btn {
+    padding: 12px 32px;
+    font-size: 1.05rem;
+    font-weight: bold;
+    color: #1b1030;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    box-shadow: 0 4px 18px rgba(255, 111, 174, 0.45);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  button.game-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(111, 216, 255, 0.55); }
+  button.game-btn:active { transform: translateY(0); }
+  footer {
+    margin-top: 10px;
+    font-size: 0.8rem;
+    color: #8b7fb0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>♪ 節奏歌詞打擊遊戲 ♪</h1>
+  <div class="subtitle">歌曲：Twinkle Twinkle Little Star（經典英文兒歌，公共領域）</div>
+
+  <div id="hud">
+    <div class="badge score">分數：<span id="scoreVal">0</span></div>
+    <div class="badge combo">連擊：<span id="comboVal">0</span></div>
+    <div class="badge acc">準度：<span id="accVal">100</span>%</div>
+    <div class="badge time">剩餘時間：<span id="timeVal">60</span> 秒</div>
+    <button id="muteBtn" title="切換音樂">🔊</button>
+  </div>
+
+  <div id="statusBars">
+    <div class="bar-row">
+      <span class="bar-label">HP</span>
+      <div class="bar-track"><div class="bar-fill" id="hpFill" style="width:100%"></div></div>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">進度</span>
+      <div class="bar-track"><div class="bar-fill" id="timeFill" style="width:100%"></div></div>
+    </div>
+  </div>
+
+  <div id="lyricTicker">按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！</div>
+  <div id="keyHint">滑鼠／手指移到音符上瞄準，按 <kbd>Z</kbd> 或 <kbd>X</kbd> 擊發（也可直接點擊／觸控）</div>
+
+  <div id="gameWrap">
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <div id="overlay">
+      <p>
+        遊戲開始後會播放《Twinkle Twinkle Little Star》的旋律，<br>
+        音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
+        將準星移到音符上，並在音符圈縮小到定位的瞬間按下 <strong>Z</strong> 或 <strong>X</strong> 鍵擊發<br>
+        （滑鼠點擊／觸控也可以）：<br>
+        <strong style="color:#ff9ecb">PERFECT</strong> / <strong style="color:#ffe9a8">GREAT</strong> / <strong style="color:#9ee9ff">OK</strong> 判定會影響得分與連擊加成，<br>
+        沒點到會扣血並中斷連擊。時間限制為 <strong>60 秒</strong>，時間到即結束並顯示總分與評級。
+      </p>
+      <button class="game-btn" id="startBtn">開始遊戲</button>
+    </div>
+  </div>
+
+  <footer>準星瞄準 + Z / X 鍵擊發（或滑鼠／觸控點擊）即可得分 · 純前端 HTML / CSS / JavaScript 製作</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+
+  const overlay = document.getElementById("overlay");
+  const startBtn = document.getElementById("startBtn");
+  const muteBtn = document.getElementById("muteBtn");
+  const scoreEl = document.getElementById("scoreVal");
+  const comboEl = document.getElementById("comboVal");
+  const accEl = document.getElementById("accVal");
+  const timeEl = document.getElementById("timeVal");
+  const lyricTicker = document.getElementById("lyricTicker");
+  const hpFillEl = document.getElementById("hpFill");
+  const timeFillEl = document.getElementById("timeFill");
+
+  // ---------------------------------------------------------------------
+  // 歌曲資料：《Twinkle Twinkle Little Star》（Jane Taylor, 1806 — 公共領域）
+  // 每個音節對應旋律中的一個音符，音節依歌曲原本的先後順序出現，
+  // 並用 Web Audio 依相同時間軸播放對應旋律，達到「跟著音樂依序出現」。
+  // ---------------------------------------------------------------------
+  const NOTE_FREQ = { C: 261.63, D: 293.66, E: 329.63, F: 349.23, G: 392.0, A: 440.0 };
+
+  const LINE_A = { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] };
+  const LINE_B = { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] };
+  const LINE_C = { text: "Up above the world so high,", notes: [["Up", "G", 1], ["a", "G", 1], ["bove", "F", 1], ["the", "F", 1], ["world", "E", 1], ["so", "E", 1], ["high", "D", 2]] };
+  const LINE_D = { text: "Like a diamond in the sky.", notes: [["Like", "G", 1], ["a", "G", 1], ["dia", "F", 1], ["mond", "F", 1], ["in", "E", 1], ["the", "E", 1], ["sky", "D", 2]] };
+
+  const SONG_LINES = [LINE_A, LINE_B, LINE_C, LINE_D, LINE_A, LINE_B];
+
+  const BEAT_MS = 420; // 每拍時長（節奏速度）
+
+  // 攤平成單一序列，並記錄每個音符在歌曲中的累積起始時間（拍）
+  const SONG_NOTES = [];
+  (function buildSongNotes() {
+    let beatCursor = 0;
+    SONG_LINES.forEach((line, lineIndex) => {
+      line.notes.forEach(([syllable, note, beats]) => {
+        SONG_NOTES.push({ syllable, note, beats, lineIndex, startBeat: beatCursor, lineText: line.text });
+        beatCursor += beats;
+      });
+    });
+  })();
+  const TOTAL_BEATS = SONG_NOTES.reduce((sum, n) => sum + n.beats, 0);
+  const LOOP_MS = TOTAL_BEATS * BEAT_MS; // 一輪完整歌曲的長度（會反覆播放至 60 秒結束）
+
+  const GAME_SECONDS = 60;
+  const APPROACH_MS = 800;   // 音符圈縮小到定位所需時間（判定基準點）
+  const HIT_WINDOW_MS = 380; // 縮小到定位後，可點擊得分的寬容時間
+  const PERFECT_ERR_MS = 100; // 判定誤差在此範圍內 => PERFECT
+  const GREAT_ERR_MS = 220;   // 判定誤差在此範圍內 => GREAT，其餘 => OK
+  const MAX_TARGETS = 12;
+  const BASE_RADIUS = 34;
+
+  const JUDGEMENT_INFO = {
+    PERFECT: { base: 300, hp: 2, color: "#ff9ecb" },
+    GREAT: { base: 100, hp: 1, color: "#ffe9a8" },
+    OK: { base: 50, hp: 0, color: "#9ee9ff" },
+    MISS: { base: 0, hp: -8, color: "#8f8899" }
+  };
+
+  const COLORS = [
+    ["#ff6fae", "#ff9ecb"],
+    ["#6fd8ff", "#9ee9ff"],
+    ["#ffd76f", "#ffe9a8"],
+    ["#a6ff6f", "#c9ffa0"],
+    ["#c88bff", "#e0bfff"]
+  ];
+
+  let state = "idle"; // idle | playing | ended
+  let score = 0;
+  let combo = 0;
+  let maxCombo = 0;
+  let hp = 100;
+  let timeLeft = GAME_SECONDS;
+  let targets = [];
+  let popEffects = [];
+  let particles = [];
+  let comboBanners = [];
+  let rafId = null;
+  let countdownId = null;
+
+  // 判定統計（用於準度與最終評級）
+  let judgedCount = 0;
+  let accuracyPoints = 0;
+  let counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
+
+  // ---- Web Audio：即時合成的旋律播放 ----
+  let audioCtx = null;
+  let masterGain = null;
+  let audioEnabled = true;
+  let scheduledOscillators = [];
+  let songStartAudioTime = 0; // AudioContext 時鐘上的歌曲起點（秒）
+  let nextSpawnIndex = 0;     // 下一個要出現的音符（依序、累積索引）
+  let currentLineIndex = -1;
+
+  // 卡拉OK式逐字歌詞高亮
+  let karaokeSpans = []; // [{ el, absStart, absEnd }]
+
+  // 準星位置（滑鼠移動更新，供 Z / X 鍵擊發使用）
+  let aimPoint = { x: W / 2, y: H / 2 };
+
+  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = audioEnabled ? 1 : 0;
+      masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playNote(freq, startAt, durSec) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(0.2, startAt + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durSec);
+    osc.connect(gain).connect(masterGain);
+    osc.start(startAt);
+    osc.stop(startAt + durSec + 0.03);
+    scheduledOscillators.push(osc);
+  }
+
+  function stopAllAudio() {
+    scheduledOscillators.forEach((o) => {
+      try { o.stop(); } catch (e) { /* 已停止則忽略 */ }
+    });
+    scheduledOscillators = [];
+  }
+
+  // 預先排程整首歌曲（含重複輪播）在 Web Audio 的精準時間軸上
+  function scheduleSong(totalDurationMs) {
+    const ctxNow = ensureAudioContext();
+    // 留出至少一個音符「縮圈」動畫的時間，讓第一個音符也能準時對上音樂
+    const a0 = ctxNow.currentTime + APPROACH_MS / 1000 + 0.05;
+    const loops = Math.ceil(totalDurationMs / LOOP_MS) + 1;
+    for (let loop = 0; loop < loops; loop++) {
+      for (const n of SONG_NOTES) {
+        const noteStartMs = loop * LOOP_MS + n.startBeat * BEAT_MS;
+        if (noteStartMs > totalDurationMs) continue;
+        const startAt = a0 + noteStartMs / 1000;
+        const durSec = (n.beats * BEAT_MS) / 1000 * 0.85;
+        playNote(NOTE_FREQ[n.note], startAt, durSec);
+      }
+    }
+    return a0;
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = String(score);
+    comboEl.textContent = String(combo);
+    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 100;
+    accEl.textContent = acc.toFixed(1);
+    hpFillEl.style.width = hp + "%";
+    hpFillEl.className = "bar-fill " + (hp <= 25 ? "danger" : hp <= 55 ? "warn" : "");
+  }
+
+  function resetState() {
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    hp = 100;
+    timeLeft = GAME_SECONDS;
+    targets = [];
+    popEffects = [];
+    particles = [];
+    comboBanners = [];
+    nextSpawnIndex = 0;
+    currentLineIndex = -1;
+    judgedCount = 0;
+    accuracyPoints = 0;
+    counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
+    timeEl.textContent = String(GAME_SECONDS);
+    timeFillEl.style.width = "100%";
+    karaokeSpans = [];
+    lyricTicker.textContent = SONG_LINES[0].text;
+    updateHUD();
+  }
+
+  function absoluteStartMs(index) {
+    const loop = Math.floor(index / SONG_NOTES.length);
+    const note = SONG_NOTES[index % SONG_NOTES.length];
+    return loop * LOOP_MS + note.startBeat * BEAT_MS;
+  }
+
+  // 依目前整句歌詞，重建逐字高亮用的 <span>，仿照 Better Lyrics 等擴充套件的卡拉OK效果
+  function rebuildKaraokeLine(note, loopIdx) {
+    const lineNotes = SONG_NOTES.filter((n) => n.lineIndex === note.lineIndex);
+    lyricTicker.innerHTML = "";
+    karaokeSpans = lineNotes.map((n) => {
+      const el = document.createElement("span");
+      el.className = "syl";
+      el.textContent = n.syllable;
+      lyricTicker.appendChild(el);
+      lyricTicker.appendChild(document.createTextNode(" "));
+      return {
+        el,
+        absStart: loopIdx * LOOP_MS + n.startBeat * BEAT_MS,
+        absEnd: loopIdx * LOOP_MS + (n.startBeat + n.beats) * BEAT_MS
+      };
+    });
+  }
+
+  function updateKaraokeHighlight(elapsedAudioMs) {
+    for (const s of karaokeSpans) {
+      const cls = elapsedAudioMs >= s.absEnd ? "syl sung" : elapsedAudioMs >= s.absStart ? "syl active" : "syl";
+      if (s.el.className !== cls) s.el.className = cls;
+    }
+  }
+
+  function spawnTargetFromNote(note, loopIdx) {
+    const held = note.beats >= 2;
+    const r = held ? BASE_RADIUS * 1.2 : BASE_RADIUS;
+    const margin = r + 20;
+    const x = rand(margin, W - margin);
+    const y = rand(margin + 20, H - margin);
+    const color = COLORS[note.lineIndex % COLORS.length];
+    targets.push({
+      x, y, r,
+      held,
+      char: note.syllable,
+      color,
+      spawnAt: performance.now(),
+      hit: false
+    });
+
+    if (note.lineIndex !== currentLineIndex) {
+      currentLineIndex = note.lineIndex;
+      rebuildKaraokeLine(note, loopIdx);
+    }
+  }
+
+  function addPopEffect(x, y, text, color) {
+    popEffects.push({ x, y, text, color, startAt: performance.now(), life: 650 });
+  }
+
+  function spawnParticles(x, y, color) {
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n + rand(-0.2, 0.2);
+      const speed = rand(60, 160);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: color[1],
+        startAt: performance.now(),
+        life: 500
+      });
+    }
+  }
+
+  function showComboBanner(n) {
+    comboBanners.push({ text: n + " COMBO!", startAt: performance.now(), life: 800 });
+  }
+
+  function judge(target, now) {
+    const elapsed = now - target.spawnAt;
+    const absErr = Math.abs(elapsed - APPROACH_MS);
+    if (absErr <= PERFECT_ERR_MS) return "PERFECT";
+    if (absErr <= GREAT_ERR_MS) return "GREAT";
+    return "OK";
+  }
+
+  function handleHit(target, now) {
+    target.hit = true;
+    const j = judge(target, now);
+    const info = JUDGEMENT_INFO[j];
+
+    combo += 1;
+    if (combo > maxCombo) maxCombo = combo;
+    const comboBonus = Math.min(combo, 20) * 2;
+    const gained = info.base + comboBonus;
+    score += gained;
+
+    judgedCount += 1;
+    accuracyPoints += info.base;
+    counts[j] += 1;
+    hp = clamp(hp + info.hp, 0, 100);
+
+    updateHUD();
+    addPopEffect(target.x, target.y, j + " +" + gained, info.color);
+    spawnParticles(target.x, target.y, target.color);
+    if (combo > 0 && combo % 10 === 0) showComboBanner(combo);
+  }
+
+  function handleMiss(target) {
+    combo = 0;
+    judgedCount += 1;
+    counts.MISS += 1;
+    hp = clamp(hp + JUDGEMENT_INFO.MISS.hp, 0, 100);
+    updateHUD();
+    addPopEffect(target.x, target.y, "MISS", JUDGEMENT_INFO.MISS.color);
+  }
+
+  function pointerToCanvas(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  }
+
+  // 在畫布座標 (x, y) 嘗試擊中音符：滑鼠／觸控點擊，或 Z / X 鍵配合準星，都會呼叫這裡
+  function attemptHit(x, y) {
+    if (state !== "playing") return;
+    const now = performance.now();
+
+    // 由最新出現的音符開始檢查，較符合直覺
+    for (let i = targets.length - 1; i >= 0; i--) {
+      const t = targets[i];
+      if (t.hit) continue;
+      const dx = x - t.x;
+      const dy = y - t.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= t.r) {
+        handleHit(t, now);
+        return;
+      }
+    }
+  }
+
+  function onPointerDown(clientX, clientY) {
+    const { x, y } = pointerToCanvas(clientX, clientY);
+    aimPoint = { x, y };
+    attemptHit(x, y);
+  }
+
+  canvas.addEventListener("mousedown", (e) => onPointerDown(e.clientX, e.clientY));
+  canvas.addEventListener("mousemove", (e) => {
+    aimPoint = pointerToCanvas(e.clientX, e.clientY);
+  });
+  canvas.addEventListener(
+    "touchstart",
+    (e) => {
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      if (touch) onPointerDown(touch.clientX, touch.clientY);
+    },
+    { passive: false }
+  );
+  canvas.addEventListener(
+    "touchmove",
+    (e) => {
+      const touch = e.changedTouches[0];
+      if (touch) aimPoint = pointerToCanvas(touch.clientX, touch.clientY);
+    },
+    { passive: true }
+  );
+
+  // Z / X 鍵：瞄準用滑鼠／觸控移動，擊發用鍵盤，符合 osu! 一類節奏遊戲的操作習慣
+  window.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+    if (key !== "z" && key !== "x") return;
+    if (state !== "playing") return;
+    e.preventDefault();
+    attemptHit(aimPoint.x, aimPoint.y);
+  });
+
+  muteBtn.addEventListener("click", () => {
+    audioEnabled = !audioEnabled;
+    muteBtn.textContent = audioEnabled ? "🔊" : "🔇";
+    if (masterGain) masterGain.gain.value = audioEnabled ? 1 : 0;
+  });
+
+  function drawBackground() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "#5a4a80";
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx <= W; gx += 40) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, H);
+      ctx.stroke();
+    }
+    for (let gy = 0; gy <= H; gy += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(W, gy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawTarget(t, now) {
+    const elapsed = now - t.spawnAt;
+    const approachProgress = Math.min(elapsed / APPROACH_MS, 1);
+    const outerR = t.r + (1 - approachProgress) * t.r * 2.2;
+
+    // 外圈（縮小指示圈）
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, outerR, 0, Math.PI * 2);
+    ctx.strokeStyle = t.color[1];
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.85;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 長音（held）音符加上第二道光環，視覺上區隔延音字
+    if (t.held) {
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 本體圓圈
+    const grad = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.r);
+    grad.addColorStop(0, t.color[1]);
+    grad.addColorStop(1, t.color[0]);
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.stroke();
+
+    // 歌詞音節文字
+    ctx.fillStyle = "#1b1030";
+    ctx.font = "bold 17px 'Microsoft JhengHei', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(t.char, t.x, t.y + 1);
+  }
+
+  function drawPopEffects(now) {
+    popEffects = popEffects.filter((p) => now - p.startAt < p.life);
+    for (const p of popEffects) {
+      const t = (now - p.startAt) / p.life;
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color;
+      ctx.font = "bold 18px 'Microsoft JhengHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(p.text, p.x, p.y - t * 30 - 10);
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(now) {
+    particles = particles.filter((p) => now - p.startAt < p.life);
+    for (const p of particles) {
+      const t = (now - p.startAt) / p.life;
+      const px = p.x + p.vx * (t * (p.life / 1000));
+      const py = p.y + p.vy * (t * (p.life / 1000)) + 40 * t * t; // 些微重力
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(px, py, 3 * (1 - t) + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawAimReticle() {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(aimPoint.x, aimPoint.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(aimPoint.x - 16, aimPoint.y);
+    ctx.lineTo(aimPoint.x - 6, aimPoint.y);
+    ctx.moveTo(aimPoint.x + 6, aimPoint.y);
+    ctx.lineTo(aimPoint.x + 16, aimPoint.y);
+    ctx.moveTo(aimPoint.x, aimPoint.y - 16);
+    ctx.lineTo(aimPoint.x, aimPoint.y - 6);
+    ctx.moveTo(aimPoint.x, aimPoint.y + 6);
+    ctx.lineTo(aimPoint.x, aimPoint.y + 16);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawComboBanners(now) {
+    comboBanners = comboBanners.filter((b) => now - b.startAt < b.life);
+    for (const b of comboBanners) {
+      const t = (now - b.startAt) / b.life;
+      const scale = 1 + (1 - t) * 0.3;
+      ctx.save();
+      ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+      ctx.translate(W / 2, 70);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#ffd76f";
+      ctx.font = "bold 34px 'Microsoft JhengHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "rgba(255, 215, 111, 0.8)";
+      ctx.shadowBlur = 16;
+      ctx.fillText(b.text, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function gameLoop() {
+    if (state !== "playing") return;
+    const now = performance.now();
+    const elapsedAudioMs = (audioCtx.currentTime - songStartAudioTime) * 1000;
+
+    // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現。
+    // 音符要提前 APPROACH_MS 出現，讓縮圈動畫縮到定位的瞬間，正好對上音樂實際播放該音的時間點。
+    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex) - APPROACH_MS && targets.length < MAX_TARGETS) {
+      const loopIdx = Math.floor(nextSpawnIndex / SONG_NOTES.length);
+      spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length], loopIdx);
+      nextSpawnIndex++;
+    }
+
+    updateKaraokeHighlight(elapsedAudioMs);
+
+    // 移除逾時未點中的音符（記為 MISS）
+    for (const t of targets) {
+      if (!t.hit && now - t.spawnAt > APPROACH_MS + HIT_WINDOW_MS) {
+        t.expired = true;
+        handleMiss(t);
+      }
+    }
+    targets = targets.filter((t) => !t.hit && !t.expired);
+
+    drawBackground();
+    for (const t of targets) drawTarget(t, now);
+    drawParticles(now);
+    drawPopEffects(now);
+    drawComboBanners(now);
+    drawAimReticle();
+
+    rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function startCountdown() {
+    countdownId = setInterval(() => {
+      timeLeft -= 1;
+      timeEl.textContent = String(Math.max(timeLeft, 0));
+      timeFillEl.style.width = clamp((timeLeft / GAME_SECONDS) * 100, 0, 100) + "%";
+      if (timeLeft <= 0) {
+        endGame();
+      }
+    }, 1000);
+  }
+
+  function startGame() {
+    resetState();
+    state = "playing";
+    overlay.classList.add("hidden");
+
+    stopAllAudio();
+    songStartAudioTime = scheduleSong((GAME_SECONDS + 2) * 1000);
+
+    startCountdown();
+    rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function computeRank() {
+    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 0;
+    if (acc >= 95 && counts.MISS === 0) return { grade: "SS", color: "#ffd76f" };
+    if (acc >= 90) return { grade: "S", color: "#ff9ecb" };
+    if (acc >= 80) return { grade: "A", color: "#a6ff6f" };
+    if (acc >= 70) return { grade: "B", color: "#9ee9ff" };
+    if (acc >= 50) return { grade: "C", color: "#c88bff" };
+    return { grade: "D", color: "#8f8899" };
+  }
+
+  function endGame() {
+    state = "ended";
+    clearInterval(countdownId);
+    if (rafId) cancelAnimationFrame(rafId);
+    targets = [];
+    drawBackground();
+
+    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 0;
+    const rank = computeRank();
+
+    overlay.innerHTML = `
+      <p>時間到！這是你這回合的表現：</p>
+      <div class="result-score">總分：${score} 分</div>
+      <div class="result-rank" style="color:${rank.color}">${rank.grade}</div>
+      <div class="result-grid">
+        <div><span class="k">最高連擊</span><span class="v">${maxCombo}</span></div>
+        <div><span class="k">準確度</span><span class="v">${acc.toFixed(1)}%</span></div>
+        <div><span class="k">PERFECT / GREAT / OK</span><span class="v">${counts.PERFECT} / ${counts.GREAT} / ${counts.OK}</span></div>
+        <div><span class="k">MISS</span><span class="v">${counts.MISS}</span></div>
+      </div>
+      <button class="game-btn" id="restartBtn">重新開始</button>
+    `;
+    overlay.classList.remove("hidden");
+    document.getElementById("restartBtn").addEventListener("click", startGame);
+  }
+
+  startBtn.addEventListener("click", startGame);
+
+  // 初始畫面預覽
+  drawBackground();
+})();
+</script>
+</body>
+</html>

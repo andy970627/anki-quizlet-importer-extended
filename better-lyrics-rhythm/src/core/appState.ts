@@ -1,0 +1,158 @@
+import { DOCK_CONTROL_ORDER_DEFAULT, DOCK_DEFAULT_POSITION } from "@constants";
+import type { LyricDecorations, LyricsData } from "@modules/lyrics/injectLyrics";
+import { createLyrics, type ParsedLyrics } from "@modules/lyrics/lyrics";
+import type { LyricSourceKey } from "@modules/lyrics/providers/shared";
+import { resetUnifiedStream } from "@modules/lyrics/providers/unified";
+import type { UnisonData } from "@modules/lyrics/providers/unison";
+import { flushLoader } from "@modules/ui/dom";
+import { clearSongCache } from "@core/storage";
+import { logError } from "@core/logger";
+
+export interface PlayerDetails {
+  currentTime: number;
+  videoId: string;
+  song: string;
+  artist: string;
+  duration: string;
+  audioTrackData: any;
+  browserTime: number;
+  isPlaying: boolean;
+  playing: boolean;
+  playbackRate?: number;
+  contentRect: {
+    width: number;
+    height: number;
+  };
+}
+
+interface AppStateType {
+  suppressZeroTime: number;
+  areLyricsTicking: boolean;
+  lyricData: LyricsData | null;
+  parsedLyrics: ParsedLyrics | null;
+  lyricDecorations: LyricDecorations;
+  areLyricsLoaded: boolean;
+  lyricInjectionFailed: boolean;
+  lastVideoId: string | null;
+  lastVideoDetails: any | null;
+  lyricInjectionPromise: Promise<any> | null;
+  queueLyricInjection: boolean;
+  shouldInjectAlbumArt: "Unknown" | boolean;
+  queueSongDetailsInjection: boolean;
+  loaderAnimationEndTimeout: number | undefined;
+  lastLoadedVideoId: string | null;
+  lyricAbortController: AbortController | null;
+  isTranslateEnabled: boolean;
+  isRomanizationEnabled: boolean;
+  romanizationDisabledLanguages: string[];
+  translationDisabledLanguages: string[];
+  translationLanguage: string;
+  isPassiveScrollEnabled: boolean;
+  hasPreloadedNextSong: boolean;
+  currentInjectionId: number;
+  lyricOffset: number;
+  globalLyricOffset: number;
+  richsyncOffsetTrim: number;
+  lineOffsetTrim: number;
+  currentProviderKey: string | null;
+  manualProviderKey: LyricSourceKey | null;
+  availableProviderKeys: LyricSourceKey[];
+  isControlsDockEnabled: boolean;
+  controlsDockPosition: string;
+  isControlsDockAutoHideInFullscreenEnabled: boolean;
+  isDockSourceEnabled: boolean;
+  isDockTranslateEnabled: boolean;
+  isDockRomanizeEnabled: boolean;
+  isDockOffsetEnabled: boolean;
+  isDockRefreshEnabled: boolean;
+  isDockPictureInPictureEnabled: boolean;
+  dockControlsOrder: string[];
+  currentUnisonData: UnisonData | null;
+  isPictureInPictureOpen: boolean;
+  endTimeMode: "total" | "remaining";
+}
+
+export const AppState: AppStateType = {
+  suppressZeroTime: 0,
+  areLyricsTicking: false,
+  lyricData: null,
+  parsedLyrics: null,
+  lyricDecorations: {},
+  areLyricsLoaded: false,
+  lyricInjectionFailed: false,
+  lastVideoId: null,
+  lastVideoDetails: null,
+  lyricInjectionPromise: null,
+  queueLyricInjection: false,
+  shouldInjectAlbumArt: "Unknown",
+  queueSongDetailsInjection: false,
+  loaderAnimationEndTimeout: undefined,
+  lastLoadedVideoId: null,
+  lyricAbortController: null,
+  isTranslateEnabled: false,
+  isRomanizationEnabled: false,
+  romanizationDisabledLanguages: [],
+  translationDisabledLanguages: [],
+  translationLanguage: "en",
+  isPassiveScrollEnabled: true,
+  hasPreloadedNextSong: false,
+  currentInjectionId: 0,
+  lyricOffset: 0,
+  globalLyricOffset: 0,
+  richsyncOffsetTrim: 0,
+  lineOffsetTrim: 0,
+  currentProviderKey: null,
+  manualProviderKey: null,
+  availableProviderKeys: [],
+  isControlsDockEnabled: true,
+  controlsDockPosition: DOCK_DEFAULT_POSITION,
+  isControlsDockAutoHideInFullscreenEnabled: true,
+  isDockSourceEnabled: true,
+  isDockTranslateEnabled: true,
+  isDockRomanizeEnabled: true,
+  isDockOffsetEnabled: true,
+  isDockRefreshEnabled: false,
+  isDockPictureInPictureEnabled: true,
+  dockControlsOrder: [...DOCK_CONTROL_ORDER_DEFAULT],
+  currentUnisonData: null,
+  isPictureInPictureOpen: false,
+  endTimeMode: "total",
+};
+
+export function reloadLyrics(): void {
+  AppState.lyricAbortController?.abort("Reloading lyrics");
+  AppState.lastVideoId = null;
+}
+
+export async function refreshCurrentSong(): Promise<void> {
+  const videoId = AppState.lastLoadedVideoId;
+  AppState.availableProviderKeys = [];
+  if (videoId) {
+    resetUnifiedStream(videoId);
+    await clearSongCache(videoId);
+  }
+  reloadLyrics();
+}
+
+export function handleModifications(detail: PlayerDetails): void {
+  if (detail.videoId !== AppState.lastLoadedVideoId) {
+    AppState.lyricOffset = 0;
+    AppState.manualProviderKey = null;
+    AppState.availableProviderKeys = [];
+  }
+
+  if (AppState.lyricInjectionPromise) {
+    AppState.lyricAbortController?.abort("New song is being loaded");
+    // flushLoader(); // Flush loader immediately when aborting
+    // Don't wait for old promise - start new song immediately
+    // Old promise will complete eventually and its finally block will handle cleanup
+  }
+
+  AppState.currentInjectionId++;
+  AppState.lyricAbortController = new AbortController();
+  AppState.lyricInjectionPromise = createLyrics(detail, AppState.lyricAbortController.signal).catch(err => {
+    logError(err);
+    AppState.areLyricsLoaded = false;
+    AppState.lyricInjectionFailed = true;
+  });
+}
