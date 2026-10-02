@@ -1,0 +1,2178 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>音符歌詞打擊遊戲</title>
+<style>
+  :root {
+    --bg1: #1b1030;
+    --bg2: #2d1b4e;
+    --accent: #ff6fae;
+    --accent2: #6fd8ff;
+    --text: #f5f2ff;
+    --panel: rgba(20, 10, 40, 0.72);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    position: relative;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 0%, var(--bg2), var(--bg1) 70%);
+    font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--text);
+    padding: 16px;
+    overflow-x: hidden;
+  }
+  /* 類似 Better Lyrics 擴充套件的氛圍背景光暈，慢速旋轉的柔焦色塊 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -25%;
+    background: conic-gradient(from 0deg, #ff6fae, #6fd8ff, #ffd76f, #a6ff6f, #c88bff, #ff6fae);
+    filter: blur(120px) opacity(0.16);
+    z-index: -1;
+    animation: ambientRotate 40s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes ambientRotate { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    body::before { animation: none; }
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.6rem;
+    letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(111, 216, 255, 0.6);
+  }
+  .subtitle {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: #b7a6e0;
+    letter-spacing: 1px;
+    text-align: center;
+  }
+  #app {
+    width: 100%;
+    max-width: 820px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #hud {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #hud .badge {
+    background: var(--panel);
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.15);
+    white-space: nowrap;
+  }
+  #hud .badge.score { color: var(--accent); }
+  #hud .badge.time { color: var(--accent2); }
+  #hud .badge.combo { color: #ffd76f; }
+  #hud .badge.acc { color: #a6ff6f; }
+  #muteBtn {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 1.1rem;
+    padding: 6px 12px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  #statusBars {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #b7a6e0;
+  }
+  .bar-row .bar-label {
+    width: 34px;
+    flex-shrink: 0;
+  }
+  .bar-track {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.12s linear, background-color 0.2s ease;
+  }
+  #hpFill { background: linear-gradient(90deg, #6fff9e, #a6ff6f); }
+  #hpFill.warn { background: linear-gradient(90deg, #ffd76f, #ffb86f); }
+  #hpFill.danger { background: linear-gradient(90deg, #ff6f6f, #ff3d5a); }
+  #timeFill { background: linear-gradient(90deg, var(--accent2), var(--accent)); width: 100%; }
+  #lyricTicker {
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #9d8fc9;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    min-height: 1.8em;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+  }
+  /* 卡拉OK式逐字跟讀高亮，參考 Better Lyrics 等擴充套件的呈現風格 */
+  #lyricTicker .syl {
+    display: inline-block;
+    opacity: 0.45;
+    color: #9d8fc9;
+    transition: color 0.15s ease, opacity 0.15s ease, text-shadow 0.2s ease, transform 0.2s ease;
+  }
+  #lyricTicker .syl.sung {
+    opacity: 0.9;
+    color: var(--accent2);
+  }
+  #lyricTicker .syl.active {
+    opacity: 1;
+    color: #ffffff;
+    text-shadow: 0 0 10px var(--accent), 0 0 22px var(--accent2);
+    transform: translateY(-2px) scale(1.14);
+    animation: sylPop 0.28s ease;
+  }
+  @keyframes sylPop {
+    0% { transform: translateY(0) scale(0.85); }
+    60% { transform: translateY(-4px) scale(1.2); }
+    100% { transform: translateY(-2px) scale(1.14); }
+  }
+  #keyHint {
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: #8b7fb0;
+    margin-bottom: 8px;
+  }
+  #keyHint kbd {
+    display: inline-block;
+    min-width: 1.4em;
+    padding: 1px 7px;
+    margin: 0 2px;
+    border-radius: 5px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: var(--text);
+    font-weight: bold;
+    font-family: inherit;
+  }
+  #gameWrap {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+  }
+  #gameCanvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: linear-gradient(160deg, #241640, #150c28);
+    border-radius: 16px;
+    border: 2px solid rgba(255,255,255,0.15);
+    box-shadow: 0 0 30px rgba(255, 111, 174, 0.25);
+    touch-action: none;
+    cursor: crosshair;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: rgba(10, 4, 24, 0.82);
+    border-radius: 16px;
+    padding: 20px;
+    gap: 14px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay p {
+    margin: 0;
+    max-width: 480px;
+    line-height: 1.7;
+    color: #d9c9ff;
+    font-size: 0.95rem;
+  }
+  #overlay .result-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 8px 20px;
+    text-align: left;
+    max-width: 360px;
+  }
+  #overlay .result-grid div span.k { color: #b7a6e0; font-size: 0.8rem; display: block; }
+  #overlay .result-grid div span.v { font-size: 1.1rem; font-weight: bold; }
+  #overlay .result-score {
+    font-size: 2.4rem;
+    font-weight: bold;
+    color: var(--accent);
+    text-shadow: 0 0 16px rgba(255,111,174,0.7);
+  }
+  #overlay .result-rank {
+    font-size: 3.2rem;
+    font-weight: bold;
+    line-height: 1;
+    text-shadow: 0 0 20px currentColor;
+  }
+  button.game-btn {
+    padding: 12px 32px;
+    font-size: 1.05rem;
+    font-weight: bold;
+    color: #1b1030;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    box-shadow: 0 4px 18px rgba(255, 111, 174, 0.45);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  button.game-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(111, 216, 255, 0.55); }
+  button.game-btn:active { transform: translateY(0); }
+  footer {
+    margin-top: 10px;
+    font-size: 0.8rem;
+    color: #8b7fb0;
+    text-align: center;
+  }
+  #hud .badge.time { margin-left: auto; }
+  #hudBtns { display: flex; gap: 6px; }
+  #hudBtns button {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 1.1rem;
+    padding: 6px 12px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  #hudBtns button:disabled { opacity: 0.4; cursor: default; }
+  .panel { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .panel.hidden { display: none; }
+  .panel h2 { margin: 0; font-size: 1.5rem; letter-spacing: 2px; }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: #d9c9ff;
+  }
+  .diff-group { display: flex; gap: 6px; }
+  .diff-group button {
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    font: inherit;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .diff-group button[aria-pressed="true"] {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #1b1030;
+    border-color: transparent;
+  }
+  .setting-row input[type="range"] { width: 160px; accent-color: var(--accent2); }
+  .setting-row output { min-width: 4.5em; font-variant-numeric: tabular-nums; }
+  .best-line { font-size: 0.85rem; color: #ffd76f; min-height: 1.2em; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button.game-btn.secondary {
+    background: rgba(255,255,255,0.12);
+    color: var(--text);
+    box-shadow: none;
+  }
+  .new-record {
+    color: #ffd76f;
+    font-weight: bold;
+    letter-spacing: 2px;
+    animation: sylPop 0.5s ease;
+  }
+  .timing-note { font-size: 0.82rem; color: #b7a6e0; max-width: 420px; line-height: 1.6; }
+  #overlay p.small { font-size: 0.8rem; color: #8b7fb0; }
+  /* 選單內容可能比畫布高（尤其手機）：選單開著時讓選單自己撐開高度（至少跟畫布一樣是 8:5），畫布改鋪在後面當背景 */
+  #gameWrap.panel-open #overlay { position: relative; inset: auto; aspect-ratio: 8 / 5; max-width: 100%; }
+  #gameWrap.panel-open #gameCanvas { position: absolute; inset: 0; height: 100%; }
+  .custom-song {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 460px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px dashed rgba(255,255,255,0.22);
+    text-align: left;
+  }
+  .custom-song[hidden], .new-record[hidden], .file-row[hidden] { display: none; }
+  .file-row select {
+    min-width: 0;
+    max-width: 100%;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.82rem;
+  }
+  .file-row select option { color: #1b1030; }
+  .file-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; color: #d9c9ff; }
+  .file-row label { min-width: 7.5em; }
+  .file-row input[type="file"] { min-width: 0; max-width: 100%; font: inherit; font-size: 0.8rem; color: var(--text); }
+  .file-row input[type="file"]::file-selector-button {
+    margin-right: 8px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .song-status { font-size: 0.8rem; line-height: 1.6; color: #b7a6e0; }
+  .song-status.ready { color: #a6ff6f; }
+  .song-status.error { color: #ff8f9f; }
+  button.game-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+  @media (max-width: 560px) {
+    #hud { font-size: 0.9rem; }
+    #hud .badge { padding: 4px 10px; }
+    #lyricTicker { font-size: 1.05rem; }
+    #overlay { padding: 14px 12px; gap: 8px; }
+
+    #overlay p { font-size: 0.82rem; }
+    #overlay .result-score { font-size: 1.7rem; }
+    #overlay .result-rank { font-size: 2.4rem; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>♪ 節奏歌詞打擊遊戲 ♪</h1>
+  <div class="subtitle" id="subtitle">歌曲：Twinkle Twinkle Little Star（經典英文兒歌，公共領域）</div>
+
+  <div id="hud">
+    <div class="badge score">分數：<span id="scoreVal">0</span></div>
+    <div class="badge combo">連擊：<span id="comboVal">0</span></div>
+    <div class="badge acc">準度：<span id="accVal">100.0</span>%</div>
+    <div class="badge time">剩餘：<span id="timeVal">60</span> 秒</div>
+    <div id="hudBtns">
+      <button id="pauseBtn" type="button" title="暫停（Esc / P）" aria-label="暫停" disabled>⏸</button>
+      <button id="muteBtn" type="button" title="切換音樂" aria-label="切換音樂">🔊</button>
+    </div>
+  </div>
+
+  <div id="statusBars">
+    <div class="bar-row">
+      <span class="bar-label">HP</span>
+      <div class="bar-track"><div class="bar-fill" id="hpFill" style="width:100%"></div></div>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">進度</span>
+      <div class="bar-track"><div class="bar-fill" id="timeFill" style="width:100%"></div></div>
+    </div>
+  </div>
+
+  <div id="lyricTicker">按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！</div>
+  <div id="keyHint">滑鼠／手指移到音符上瞄準，按 <kbd>Z</kbd> 或 <kbd>X</kbd> 擊發（也可直接點擊／觸控）· <kbd>Esc</kbd> 暫停</div>
+
+  <div id="gameWrap">
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <div id="overlay">
+      <!-- 主選單 -->
+      <div class="panel" id="menuPanel">
+        <p>
+          音符圓圈會照歌詞在歌曲裡的順序出現。把準星移到音符上，在外圈縮到定位的瞬間按
+          <strong>Z</strong> 或 <strong>X</strong>（點擊／觸控也可以）。
+          <strong style="color:#ff9ecb">PERFECT</strong> / <strong style="color:#ffe9a8">GREAT</strong> / <strong style="color:#9ee9ff">OK</strong>
+          影響得分與連擊；沒打到會扣血，<strong>HP 歸零就挑戰失敗</strong>。
+        </p>
+        <div class="setting-row">
+          <span>歌曲</span>
+          <div class="diff-group" role="group" aria-label="歌曲">
+            <button type="button" data-song="twinkle">小星星（60 秒）</button>
+            <button type="button" data-song="custom">我的音樂</button>
+            <button type="button" data-song="osu">osu! 譜面</button>
+          </div>
+        </div>
+        <div class="custom-song" id="osuSong" hidden>
+          <div class="file-row">
+            <label for="oszFile">譜面 .osz</label>
+            <input type="file" id="oszFile" accept=".osz,.zip">
+          </div>
+          <div class="file-row" id="osuVersionRow" hidden>
+            <label for="osuVersion">譜面難度</label>
+            <select id="osuVersion"></select>
+          </div>
+          <div class="song-status" id="osuStatus" role="status" aria-live="polite"></div>
+        </div>
+        <div class="custom-song" id="customSong" hidden>
+          <div class="file-row">
+            <label for="audioFile">音樂檔</label>
+            <input type="file" id="audioFile" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac,.webm">
+          </div>
+          <div class="file-row">
+            <label for="lrcFile">歌詞 .lrc（選填）</label>
+            <input type="file" id="lrcFile" accept=".lrc,.txt,text/plain">
+          </div>
+          <div class="song-status" id="songStatus" role="status" aria-live="polite"></div>
+        </div>
+        <div class="setting-row">
+          <span>難度</span>
+          <div class="diff-group" role="group" aria-label="難度">
+            <button type="button" data-diff="easy">簡單</button>
+            <button type="button" data-diff="normal">普通</button>
+            <button type="button" data-diff="hard">困難</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label for="offsetInput">音訊延遲校正</label>
+          <input type="range" id="offsetInput" min="-150" max="150" step="10" value="0">
+          <output id="offsetVal" for="offsetInput">0 ms</output>
+        </div>
+        <div class="best-line" id="bestLine"></div>
+        <button class="game-btn" id="startBtn" type="button">開始遊戲</button>
+        <p class="small">按 <strong>Enter</strong> 或 <strong>空白鍵</strong> 也能開始</p>
+      </div>
+
+      <!-- 暫停 -->
+      <div class="panel hidden" id="pausePanel">
+        <h2>⏸ 暫停中</h2>
+        <p>音樂和時間都已停止，準備好再繼續。</p>
+        <div class="btn-row">
+          <button class="game-btn" id="resumeBtn" type="button">繼續</button>
+          <button class="game-btn secondary" id="pauseRestartBtn" type="button">重新開始</button>
+          <button class="game-btn secondary" id="pauseMenuBtn" type="button">回主選單</button>
+        </div>
+      </div>
+
+      <!-- 結算 -->
+      <div class="panel hidden" id="resultPanel">
+        <p id="resultTitle"></p>
+        <div class="result-score" id="resultScore"></div>
+        <div class="result-rank" id="resultRank"></div>
+        <div class="new-record" id="newRecord" hidden>★ 新紀錄！★</div>
+        <div class="result-grid">
+          <div><span class="k">最高連擊</span><span class="v" id="resMaxCombo"></span></div>
+          <div><span class="k">準確度</span><span class="v" id="resAcc"></span></div>
+          <div><span class="k">PERFECT / GREAT / OK</span><span class="v" id="resCounts"></span></div>
+          <div><span class="k">MISS</span><span class="v" id="resMiss"></span></div>
+        </div>
+        <div class="timing-note" id="resTiming"></div>
+        <div class="btn-row">
+          <button class="game-btn" id="restartBtn" type="button">重新開始</button>
+          <button class="game-btn secondary" id="menuBtn" type="button">回主選單</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>準星瞄準 + Z / X 鍵擊發（或滑鼠／觸控點擊）即可得分 · 純前端 HTML / CSS / JavaScript 製作</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+
+  const $ = (id) => document.getElementById(id);
+  const overlay = $("overlay");
+  const gameWrap = $("gameWrap");
+  const menuPanel = $("menuPanel");
+  const pausePanel = $("pausePanel");
+  const resultPanel = $("resultPanel");
+  const startBtn = $("startBtn");
+  const pauseBtn = $("pauseBtn");
+  const muteBtn = $("muteBtn");
+  const scoreEl = $("scoreVal");
+  const comboEl = $("comboVal");
+  const accEl = $("accVal");
+  const timeEl = $("timeVal");
+  const lyricTicker = $("lyricTicker");
+  const hpFillEl = $("hpFill");
+  const timeFillEl = $("timeFill");
+  const offsetInput = $("offsetInput");
+  const offsetValEl = $("offsetVal");
+  const bestLineEl = $("bestLine");
+  const subtitleEl = $("subtitle");
+  const customSongEl = $("customSong");
+  const audioFileInput = $("audioFile");
+  const lrcFileInput = $("lrcFile");
+  const songStatusEl = $("songStatus");
+  const osuSongEl = $("osuSong");
+  const oszFileInput = $("oszFile");
+  const osuVersionRow = $("osuVersionRow");
+  const osuVersionSelect = $("osuVersion");
+  const osuStatusEl = $("osuStatus");
+
+  const IDLE_TICKER = "按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！";
+
+  // ---------------------------------------------------------------------
+  // 內建歌曲：《Twinkle Twinkle Little Star》（Jane Taylor, 1806 — 公共領域）
+  // 每個音節對應旋律中的一個音符，並用 Web Audio 依相同時間軸合成旋律。
+  // ---------------------------------------------------------------------
+  const NOTE_FREQ = { C: 261.63, D: 293.66, E: 329.63, F: 349.23, G: 392.0, A: 440.0 };
+
+  const LINE_A = { text: "Twinkle, twinkle, little star,", notes: [["Twin", "C", 1], ["kle", "C", 1], ["Twin", "G", 1], ["kle", "G", 1], ["Lit", "A", 1], ["tle", "A", 1], ["Star", "G", 2]] };
+  const LINE_B = { text: "How I wonder what you are!", notes: [["How", "F", 1], ["I", "F", 1], ["Won", "E", 1], ["der", "E", 1], ["What", "D", 1], ["You", "D", 1], ["Are", "C", 2]] };
+  const LINE_C = { text: "Up above the world so high,", notes: [["Up", "G", 1], ["a", "G", 1], ["bove", "F", 1], ["the", "F", 1], ["world", "E", 1], ["so", "E", 1], ["high", "D", 2]] };
+  const LINE_D = { text: "Like a diamond in the sky.", notes: [["Like", "G", 1], ["a", "G", 1], ["dia", "F", 1], ["mond", "F", 1], ["in", "E", 1], ["the", "E", 1], ["sky", "D", 2]] };
+
+  const SONG_LINES = [LINE_A, LINE_B, LINE_C, LINE_D, LINE_A, LINE_B];
+  const BEAT_MS = 420; // 每拍時長（節奏速度）
+  const GAME_SECONDS = 60; // 內建歌曲的遊玩時間（旋律會重複播放到時間到）
+  const LEAD_IN_MS = 1500; // 開始後先留一點準備時間，第一個音符才不會一開局就要打
+
+  // 三種難度：縮圈時間、音符大小、判定寬容度、失誤扣血量、自選歌曲的最小音符間隔
+  const DIFFICULTIES = {
+    easy:   { label: "簡單", approachMs: 1100, radius: 42, perfect: 110, great: 220, ok: 330, missHp: 5,  minGapMs: 380 },
+    normal: { label: "普通", approachMs: 800,  radius: 34, perfect: 90,  great: 180, ok: 280, missHp: 8,  minGapMs: 240 },
+    hard:   { label: "困難", approachMs: 600,  radius: 28, perfect: 60,  great: 130, ok: 220, missHp: 12, minGapMs: 150 }
+  };
+
+  const JUDGEMENT_INFO = {
+    PERFECT: { base: 300, hp: 2, color: "#ff9ecb" },
+    GREAT: { base: 100, hp: 1, color: "#ffe9a8" },
+    OK: { base: 50, hp: 0, color: "#9ee9ff" },
+    MISS: { base: 0, hp: 0, color: "#8f8899" }
+  };
+
+  const COLORS = [
+    ["#ff6fae", "#ff9ecb"],
+    ["#6fd8ff", "#9ee9ff"],
+    ["#ffd76f", "#ffe9a8"],
+    ["#a6ff6f", "#c9ffa0"],
+    ["#c88bff", "#e0bfff"]
+  ];
+  const INTERLUDE_COLOR = ["#8f86b8", "#c9c2ea"]; // 沒有歌詞的段落（前奏、間奏）用的低調顏色
+
+  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // ---- 本機設定與最佳紀錄（瀏覽器不允許儲存時就略過，不影響遊玩）----
+  const STORAGE_PREFIX = "twinkleRhythm.";
+  function loadSetting(key, fallback) {
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function saveSetting(key, value) {
+    try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch (e) { /* 無法儲存就算了 */ }
+  }
+
+  function hashText(text) {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  let difficultyKey = DIFFICULTIES[loadSetting("difficulty", "normal")] ? loadSetting("difficulty", "normal") : "normal";
+  const SONG_KEYS = ["twinkle", "custom", "osu"];
+  let songKey = SONG_KEYS.includes(loadSetting("song", "twinkle")) ? loadSetting("song", "twinkle") : "twinkle";
+  let offsetMs = clamp(Number(loadSetting("offsetMs", 0)) || 0, -150, 150);
+  let audioEnabled = loadSetting("audioEnabled", true) !== false;
+  let diff = DIFFICULTIES[difficultyKey];
+
+  // 使用者自選的歌曲（只存在這個分頁的記憶體裡，不會上傳）
+  // { name, size, buffer, onsets, lrc, lrcName, analyzing, error }
+  const customSong = { name: null, size: 0, buffer: null, onsets: null, lrc: null, lrcName: null, analyzing: false, error: null };
+
+  // 使用者自己下載的 osu! 譜面（.osz）
+  // { fileName, maps: [{ entry, info }], selected, buffer, background, loading, error }
+  const osuSong = { fileName: null, maps: [], selected: 0, buffer: null, background: null, loading: false, error: null };
+
+  let chart = null; // 這一局的譜面：{ title, durationMs, timeLimited, notes, lines, schedule(a0), diff?, leadInMs?, background? }
+
+  let state = "idle"; // idle | playing | paused | ended
+  let score = 0;
+  let combo = 0;
+  let maxCombo = 0;
+  let hp = 100;
+  let targets = [];
+  let popEffects = [];
+  let particles = [];
+  let comboBanners = [];
+  let rafId = null;
+  let lastPlaced = null; // 上一個音符的位置，用來排出 osu 式的「跳躍」動線
+  let sizeScale = 1;     // 畫面縮得很小（手機）時把音符放大，手指才點得到
+
+  // 判定統計（用於準度與最終評級）
+  let judgedCount = 0;
+  let accuracyPoints = 0;
+  let counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
+  let hitErrors = []; // 每次擊中的時間誤差（正數 = 偏晚）
+
+  // ---- Web Audio ----
+  let audioCtx = null;
+  let masterGain = null;
+  let scheduledSources = [];
+  let songStartAudioTime = 0; // AudioContext 時鐘上的歌曲起點（秒）
+  let nextSpawnIndex = 0;     // 下一個要出現的音符
+  let currentLineIndex = null;
+
+  // 卡拉OK式逐字歌詞高亮
+  let karaokeSpans = []; // [{ el, absStart, absEnd }]
+
+  // 準星位置（滑鼠移動更新，供 Z / X 鍵擊發使用）
+  let aimPoint = { x: W / 2, y: H / 2 };
+
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = audioEnabled ? 1 : 0;
+      masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playTone(freq, startAt, durSec) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(0.2, startAt + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durSec);
+    osc.connect(gain).connect(masterGain);
+    osc.start(startAt);
+    osc.stop(startAt + durSec + 0.03);
+    scheduledSources.push(osc);
+  }
+
+  // 打擊音效：短促的「叮」，PERFECT 音高較高，讓玩家不看畫面也知道打得準不準
+  function playHitSound(judgement) {
+    if (!audioCtx || !audioEnabled) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(judgement === "PERFECT" ? 1568 : judgement === "GREAT" ? 1318 : 1046, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    osc.connect(gain).connect(masterGain);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  }
+
+  function stopAllAudio() {
+    scheduledSources.forEach((s) => {
+      try { s.stop(); } catch (e) { /* 已停止則忽略 */ }
+    });
+    scheduledSources = [];
+  }
+
+  // ---------------------------------------------------------------------
+  // 譜面：所有歌曲都轉成同一種格式，遊戲本體只看這份資料
+  //   notes: [{ timeMs, label, lineIndex, held }]   lineIndex = -1 代表前奏／間奏（沒有歌詞）
+  //   lines: [{ startMs, endMs, tokens: [{ text, startMs, endMs }] }]
+  // ---------------------------------------------------------------------
+  function buildTwinkleChart() {
+    const totalMs = GAME_SECONDS * 1000;
+    const loopBeats = SONG_LINES.reduce((sum, line) => sum + line.notes.reduce((s, n) => s + n[2], 0), 0);
+    const loopMs = loopBeats * BEAT_MS;
+    const notes = [];
+    const lines = [];
+    for (let base = 0; base < totalMs; base += loopMs) {
+      let beat = 0;
+      SONG_LINES.forEach((line, li) => {
+        const tokens = [];
+        line.notes.forEach(([syllable, pitch, beats]) => {
+          const startMs = base + beat * BEAT_MS;
+          beat += beats;
+          if (startMs >= totalMs) return;
+          tokens.push({ text: syllable, startMs, endMs: base + beat * BEAT_MS });
+          notes.push({ timeMs: startMs, label: syllable, lineIndex: lines.length, held: beats >= 2, pitch, durMs: beats * BEAT_MS, colorIndex: li });
+        });
+        if (tokens.length) lines.push({ startMs: tokens[0].startMs, endMs: tokens[tokens.length - 1].endMs, tokens });
+      });
+    }
+    return {
+      key: "twinkle",
+      title: "Twinkle Twinkle Little Star",
+      durationMs: totalMs,
+      timeLimited: true,
+      notes,
+      lines,
+      schedule(a0) {
+        for (const n of notes) playTone(NOTE_FREQ[n.pitch], a0 + n.timeMs / 1000, (n.durMs / 1000) * 0.85);
+      }
+    };
+  }
+
+  // ---- LRC 歌詞解析：支援一般逐行 [mm:ss.xx]、一行多個時間標記，以及逐字 <mm:ss.xx> 的加強格式 ----
+  const TIME_TAG = /\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g;
+  const WORD_TAG = /<(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)>/g;
+  function tagToMs(min, sec) {
+    return (Number(min) * 60 + Number(String(sec).replace(":", "."))) * 1000;
+  }
+
+  function parseLrc(text) {
+    let offset = 0;
+    const raw = [];
+    for (const rawLine of text.replace(/^﻿/, "").split(/\r?\n/)) {
+      const meta = rawLine.match(/^\s*\[offset:\s*([+-]?\d+)\s*\]/i);
+      if (meta) { offset = Number(meta[1]); continue; }
+      const prefix = rawLine.match(/^\s*((?:\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]\s*)+)(.*)$/);
+      if (!prefix) continue;
+      const times = [...prefix[1].matchAll(TIME_TAG)].map((m) => tagToMs(m[1], m[2]));
+      const body = prefix[2];
+      // 逐字時間：<mm:ss.xx>字 <mm:ss.xx>字……（第一個標記前的文字用整行的時間）
+      const words = [];
+      const wordTags = [...body.matchAll(WORD_TAG)];
+      if (wordTags.length && times.length === 1) {
+        const lead = body.slice(0, wordTags[0].index).trim();
+        if (lead) words.push({ text: lead, startMs: times[0] });
+        wordTags.forEach((m, i) => {
+          const end = i + 1 < wordTags.length ? wordTags[i + 1].index : body.length;
+          const w = body.slice(m.index + m[0].length, end).trim();
+          if (w) words.push({ text: w, startMs: tagToMs(m[1], m[2]) });
+        });
+      }
+      const plain = body.replace(WORD_TAG, "").replace(/\s+/g, " ").trim();
+      for (const t of times) raw.push({ startMs: t, text: plain, words: times.length === 1 ? words : [] });
+    }
+    raw.sort((a, b) => a.startMs - b.startMs);
+    // [offset:+100] 代表歌詞要提早 100ms 出現
+    for (const l of raw) {
+      l.startMs -= offset;
+      for (const w of l.words) w.startMs -= offset;
+    }
+    // 空白行是「上一句結束」的記號，用來決定每一句的結束時間，本身不顯示
+    const lines = [];
+    raw.forEach((l, i) => {
+      if (!l.text) return;
+      const next = raw[i + 1];
+      const endMs = next ? next.startMs : l.startMs + 5000;
+      const words = l.words.map((w, k) => ({
+        text: w.text,
+        startMs: w.startMs,
+        endMs: k + 1 < l.words.length ? l.words[k + 1].startMs : endMs
+      }));
+      lines.push({ startMs: l.startMs, endMs, text: l.text, words });
+    });
+    return { lines, hasWordTiming: lines.some((l) => l.words.length > 1) };
+  }
+
+  // 把一句歌詞切成一個個「可以放在音符上的字」：中日韓文一字一個，英文等一個單字一個
+  const CJK = "\\u3040-\\u30ff\\u3400-\\u9fff\\uf900-\\ufaff\\uac00-\\ud7af";
+  const TOKEN_RE = new RegExp(`[${CJK}]|[^\\s${CJK}]+`, "g");
+  const PUNCT_ONLY = /^[\s.,!?;:'"()\[\]{}\-–—…、，。！？；：「」『』（）《》〈〉·~]+$/;
+  const HAS_CJK = new RegExp(`[${CJK}]`);
+  function tokenize(text) {
+    return (text.match(TOKEN_RE) || []).filter((t) => !PUNCT_ONLY.test(t));
+  }
+  function joinTokens(tokens) {
+    return tokens.reduce((acc, t) => (acc && !(HAS_CJK.test(acc.slice(-1)) && HAS_CJK.test(t[0])) ? acc + " " + t : acc + t), "");
+  }
+
+  // ---- 節拍（起音）偵測：在瀏覽器裡分析使用者自己的音樂檔，不會上傳 ----
+  // 每 10ms 取一小段聲音做頻譜（FFT），看各個頻率的音量「突然變大」了多少（對數頻譜流量），
+  // 變大很多的地方就是鼓、撥弦、咬字之類的起音；再用前後 0.3 秒的平均值當門檻挑出明顯的峰值。
+  function detectOnsets(buffer) {
+    const channels = [];
+    for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
+    // 轉成單聲道；取樣率高於 32kHz 時減半，分析快一倍，拍點準度不受影響
+    const step = buffer.sampleRate >= 32000 ? 2 : 1;
+    const sr = buffer.sampleRate / step;
+    const len = Math.floor(buffer.length / step);
+    const mono = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+      let x = 0;
+      for (const ch of channels) for (let k = 0; k < step; k++) x += ch[i * step + k];
+      mono[i] = x / (channels.length * step);
+    }
+
+    const N = 512;
+    const hop = Math.max(1, Math.round(sr * 0.01));
+    const frames = Math.max(0, Math.floor((len - N) / hop));
+    const bins = N / 2;
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
+    const bits = Math.log2(N);
+    const rev = new Uint16Array(N);
+    for (let i = 0; i < N; i++) {
+      let r = 0;
+      for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b);
+      rev[i] = r;
+    }
+    const cosT = new Float32Array(bins);
+    const sinT = new Float32Array(bins);
+    for (let i = 0; i < bins; i++) {
+      cosT[i] = Math.cos((2 * Math.PI * i) / N);
+      sinT[i] = -Math.sin((2 * Math.PI * i) / N);
+    }
+    const re = new Float32Array(N);
+    const im = new Float32Array(N);
+    let prevMag = new Float32Array(bins);
+    let mag = new Float32Array(bins);
+    const flux = new Float32Array(frames);
+    for (let f = 0; f < frames; f++) {
+      const off = f * hop;
+      for (let i = 0; i < N; i++) {
+        re[rev[i]] = mono[off + i] * win[i];
+        im[rev[i]] = 0;
+      }
+      for (let size = 2; size <= N; size <<= 1) {
+        const half = size >> 1;
+        const tstep = N / size;
+        for (let start = 0; start < N; start += size) {
+          for (let k = 0; k < half; k++) {
+            const ia = start + k;
+            const ib = ia + half;
+            const ti = k * tstep;
+            const tr = re[ib] * cosT[ti] - im[ib] * sinT[ti];
+            const tim = re[ib] * sinT[ti] + im[ib] * cosT[ti];
+            re[ib] = re[ia] - tr;
+            im[ib] = im[ia] - tim;
+            re[ia] += tr;
+            im[ia] += tim;
+          }
+        }
+      }
+      let sum = 0;
+      for (let k = 1; k < bins; k++) {
+        const m = Math.log1p(100 * Math.hypot(re[k], im[k]));
+        mag[k] = m;
+        if (f > 0 && m > prevMag[k]) sum += m - prevMag[k];
+      }
+      flux[f] = sum;
+      const tmp = prevMag;
+      prevMag = mag;
+      mag = tmp;
+    }
+
+    let total = 0;
+    for (let f = 0; f < frames; f++) total += flux[f];
+    const globalMean = total / Math.max(1, frames);
+    const prefix = new Float64Array(frames + 1);
+    for (let f = 0; f < frames; f++) prefix[f + 1] = prefix[f] + flux[f];
+    const WIN = 30; // 前後 0.3 秒
+    const onsets = [];
+    for (let f = 3; f < frames - 3; f++) {
+      const lo = Math.max(0, f - WIN);
+      const hiIdx = Math.min(frames, f + WIN + 1);
+      const localMean = (prefix[hiIdx] - prefix[lo]) / (hiIdx - lo);
+      const threshold = localMean * 1.5 + globalMean * 0.5;
+      const v = flux[f];
+      if (v <= threshold) continue;
+      let isPeak = true;
+      for (let k = -3; k <= 3 && isPeak; k++) if (k !== 0 && flux[f + k] > v) isPeak = false;
+      // 起音剛進入分析窗口的尾端時峰值最大，所以起音時間約是「窗口起點 + 窗口長度 − 一格」
+      if (isPeak) onsets.push({ timeMs: ((f * hop + N - hop) * 1000) / sr, strength: v - threshold });
+    }
+
+    // 去掉和明顯起音相比太弱的小起伏（持續音的顫動、底噪），只留下聽得出來的拍點
+    if (!onsets.length) return onsets;
+    const strengths = onsets.map((o) => o.strength).sort((x, y) => x - y);
+    const strong = strengths[Math.floor(strengths.length * 0.9)];
+    return onsets.filter((o) => o.strength >= strong * 0.12);
+  }
+
+  // 依難度挑音符：先留最明顯的起音，太靠近的較弱起音就捨棄
+  function pickOnsets(onsets, minGapMs, untilMs) {
+    const sorted = onsets.filter((o) => o.timeMs < untilMs).sort((a, b) => b.strength - a.strength);
+    const picked = [];
+    for (const o of sorted) {
+      if (picked.every((p) => Math.abs(p.timeMs - o.timeMs) >= minGapMs)) picked.push(o);
+    }
+    return picked.map((o) => o.timeMs).sort((a, b) => a - b);
+  }
+
+  // 逐字歌詞太密時，把太接近的字併到前一個音符上
+  function mergeCloseNotes(notes, minGapMs) {
+    const out = [];
+    for (const n of notes.sort((a, b) => a.timeMs - b.timeMs)) {
+      const prev = out[out.length - 1];
+      if (prev && n.timeMs - prev.timeMs < minGapMs) {
+        if (prev.lineIndex === n.lineIndex) prev.label = joinTokens([prev.label, n.label]);
+        continue;
+      }
+      out.push(n);
+    }
+    return out;
+  }
+
+  function buildCustomChart(song, d) {
+    const fullMs = song.buffer.duration * 1000;
+    const untilMs = fullMs - 300;
+    let notes = [];
+    const lines = [];
+    const lrc = song.lrc;
+
+    if (lrc && lrc.hasWordTiming) {
+      // 逐字歌詞：每個字的時間就是音符的時間
+      lrc.lines.forEach((l) => {
+        if (l.startMs >= untilMs) return;
+        const li = lines.length;
+        const tokens = l.words.length ? l.words : [{ text: l.text, startMs: l.startMs, endMs: l.endMs }];
+        lines.push({ startMs: l.startMs, endMs: l.endMs, tokens });
+        for (const t of tokens) {
+          if (t.startMs < untilMs && t.startMs >= 0) notes.push({ timeMs: t.startMs, label: t.text, lineIndex: li, held: t.endMs - t.startMs >= 900 });
+        }
+      });
+      notes = mergeCloseNotes(notes, d.minGapMs);
+    } else {
+      // 逐行歌詞或沒有歌詞：音符放在偵測到的節拍上
+      const beats = pickOnsets(song.onsets, d.minGapMs, untilMs);
+      const used = new Set();
+      if (lrc) {
+        // 逐行歌詞：把這一句的字依序分配到這一句時間內的節拍上
+        lrc.lines.forEach((l) => {
+          if (l.startMs >= untilMs) return;
+          const words = tokenize(l.text);
+          if (!words.length) return;
+          let inLine = beats.filter((t) => t >= l.startMs - 60 && t < l.endMs - 60 && !used.has(t));
+          if (!inLine.length) inLine = [Math.max(0, l.startMs)];
+          const li = lines.length;
+          const tokens = [];
+          inLine.forEach((t, j) => {
+            used.add(t);
+            let label = null;
+            if (inLine.length >= words.length) {
+              // 節拍比字多：字平均分散到節拍上，其餘節拍用 ♪
+              const k = Math.floor((j * words.length) / inLine.length);
+              const firstJ = Math.ceil((k * inLine.length) / words.length);
+              if (j === firstJ) label = words[k];
+            } else {
+              // 字比節拍多：幾個字合成一個音符
+              const from = Math.floor((j * words.length) / inLine.length);
+              const to = Math.floor(((j + 1) * words.length) / inLine.length);
+              label = joinTokens(words.slice(from, to));
+            }
+            if (label) tokens.push({ text: label, startMs: t, endMs: 0 });
+            notes.push({ timeMs: t, label: label || "♪", lineIndex: li, held: false });
+          });
+          tokens.forEach((tok, k) => { tok.endMs = k + 1 < tokens.length ? tokens[k + 1].startMs : l.endMs; });
+          lines.push({ startMs: l.startMs, endMs: l.endMs, tokens });
+        });
+      }
+      // 沒有歌詞的段落（前奏、間奏、或根本沒給歌詞）用 ♪
+      for (const t of beats) if (!used.has(t)) notes.push({ timeMs: t, label: "♪", lineIndex: -1, held: false });
+      notes.sort((a, b) => a.timeMs - b.timeMs);
+    }
+
+    const lastNote = notes.length ? notes[notes.length - 1].timeMs : 0;
+    const buffer = song.buffer;
+    return {
+      key: "custom." + hashText(song.name + ":" + song.size),
+      title: song.name.replace(/\.[^.]+$/, ""),
+      durationMs: Math.min(fullMs, lastNote + 4000),
+      timeLimited: false,
+      notes,
+      lines,
+      schedule(a0) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(masterGain);
+        src.start(a0);
+        scheduledSources.push(src);
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // osu! 譜面（.osz）：使用者自己從 osu! 等網站下載的譜面檔，在瀏覽器裡解開、讀取，不會上傳。
+  // .osz 其實是 zip，裡面有 .osu 譜面（每個難度一個）、音樂檔和背景圖。
+  // ---------------------------------------------------------------------
+  async function readZip(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    let eocd = -1;
+    for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error("不是 zip 檔");
+    const count = view.getUint16(eocd + 10, true);
+    let p = view.getUint32(eocd + 16, true);
+    const entries = new Map();
+    const decoder = new TextDecoder("utf-8");
+    for (let k = 0; k < count; k++) {
+      if (view.getUint32(p, true) !== 0x02014b50) break;
+      const method = view.getUint16(p + 10, true);
+      const size = view.getUint32(p + 20, true);
+      const nameLen = view.getUint16(p + 28, true);
+      const extraLen = view.getUint16(p + 30, true);
+      const commentLen = view.getUint16(p + 32, true);
+      const localOffset = view.getUint32(p + 42, true);
+      const name = decoder.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+      entries.set(name, { method, size, localOffset });
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return {
+      names: [...entries.keys()],
+      find(name) {
+        const lower = name.toLowerCase().replace(/\\/g, "/");
+        return [...entries.keys()].find((n) => n.toLowerCase() === lower) || null;
+      },
+      async read(name) {
+        const e = entries.get(name);
+        if (!e) throw new Error("找不到 " + name);
+        const start = e.localOffset + 30 + view.getUint16(e.localOffset + 26, true) + view.getUint16(e.localOffset + 28, true);
+        const data = bytes.subarray(start, start + e.size);
+        if (e.method === 0) return data;
+        if (e.method === 8 && typeof DecompressionStream !== "undefined") {
+          const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+          return new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+        throw new Error("這個瀏覽器解不開這種壓縮格式");
+      }
+    };
+  }
+
+  function parseOsu(text) {
+    const sections = {};
+    let current = null;
+    for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("//")) continue;
+      const header = line.match(/^\[(\w+)\]$/);
+      if (header) { current = header[1]; sections[current] = []; continue; }
+      if (current) sections[current].push(line);
+    }
+    const keyValues = (name) => {
+      const out = {};
+      for (const l of sections[name] || []) {
+        const i = l.indexOf(":");
+        if (i > 0) out[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+      }
+      return out;
+    };
+    const general = keyValues("General");
+    const meta = keyValues("Metadata");
+    const d = keyValues("Difficulty");
+    let background = null;
+    for (const l of sections.Events || []) {
+      const m = l.match(/^0\s*,\s*0\s*,\s*"([^"]+)"/);
+      if (m) { background = m[1]; break; }
+    }
+    // 物件類型（位元）：1 = 圓圈、2 = 滑條、4 = 新的 combo、8 = 轉盤、128 = mania 長按
+    const objects = [];
+    let comboIndex = -1;
+    let comboNumber = 0;
+    for (const l of sections.HitObjects || []) {
+      const parts = l.split(",");
+      if (parts.length < 4) continue;
+      const type = Number(parts[3]);
+      if (type & 8) continue; // 轉盤略過
+      if (!(type & (1 | 2 | 128))) continue;
+      if (type & 4 || comboIndex < 0) { comboIndex++; comboNumber = 0; }
+      comboNumber++;
+      objects.push({ x: Number(parts[0]), y: Number(parts[1]), timeMs: Number(parts[2]), slider: Boolean(type & 2), comboIndex, comboNumber });
+    }
+    objects.sort((a, b) => a.timeMs - b.timeMs);
+    const od = Number(d.OverallDifficulty ?? 5);
+    return {
+      mode: Number(general.Mode || 0),
+      audioFile: general.AudioFilename || "",
+      leadInMs: Number(general.AudioLeadIn || 0),
+      title: meta.TitleUnicode || meta.Title || "",
+      artist: meta.ArtistUnicode || meta.Artist || "",
+      version: meta.Version || "",
+      creator: meta.Creator || "",
+      ar: Number(d.ApproachRate ?? od),
+      cs: Number(d.CircleSize ?? 4),
+      od,
+      hp: Number(d.HPDrainRate ?? 5),
+      background,
+      objects
+    };
+  }
+
+  const OSU_MODES = { 0: "osu!", 1: "太鼓", 2: "接水果", 3: "mania" };
+
+  // 把 osu! 的 AR / CS / OD / HP 換成這個遊戲用的數值（公式跟 osu! 一樣）。
+  // 難度按鈕對 osu! 譜面相當於模組：簡單 = Easy（數值減半）、普通 = 原譜面、困難 = Hard Rock。
+  function osuDifficulty(info, key, scale) {
+    let { ar, cs, od, hp } = info;
+    if (key === "easy") { ar /= 2; cs /= 2; od /= 2; hp /= 2; }
+    if (key === "hard") { ar = Math.min(10, ar * 1.4); cs = Math.min(10, cs * 1.3); od = Math.min(10, od * 1.4); hp = Math.min(10, hp * 1.4); }
+    const approachMs = ar < 5 ? 1800 - 120 * ar : 1200 - 150 * (ar - 5);
+    return {
+      label: DIFFICULTIES[key].label,
+      approachMs,
+      radius: Math.max(14, (54.4 - 4.48 * cs) * scale),
+      perfect: Math.max(16, 80 - 6 * od),
+      great: Math.max(30, 140 - 8 * od),
+      ok: Math.max(50, 200 - 10 * od),
+      missHp: 4 + hp * 1.2,
+      minGapMs: 0,
+      mods: key === "easy" ? "Easy" : key === "hard" ? "Hard Rock" : ""
+    };
+  }
+
+  function osuMapLabel(info) {
+    const extra = info.mode !== 0 ? `，${OSU_MODES[info.mode] || "其他"} 模式` : "";
+    return `${info.version || "未命名"}（${info.objects.length} 個物件${extra}）`;
+  }
+
+  function selectedOsuMap() {
+    return osuSong.maps[osuSong.selected] || null;
+  }
+
+  function buildOsuChart(song, key) {
+    const map = selectedOsuMap();
+    const info = map.info;
+    // osu! 的遊玩區是 512×384，等比例縮放後置中放進 800×500 的畫布
+    const scale = Math.min((W - 120) / 512, (H - 100) / 384);
+    const offsetX = (W - 512 * scale) / 2;
+    const offsetY = (H - 384 * scale) / 2;
+    const d = osuDifficulty(info, key, scale);
+    const fullMs = song.buffer.duration * 1000;
+    // 只有 osu!standard 的座標有意義；其他模式只用時間，位置交給這個遊戲自己安排
+    const usePositions = info.mode === 0;
+    const notes = info.objects
+      .filter((o) => o.timeMs >= 0 && o.timeMs < fullMs)
+      .map((o) => ({
+        timeMs: o.timeMs,
+        label: String(o.comboNumber),
+        lineIndex: -1,
+        colorIndex: o.comboIndex,
+        held: false,
+        x: usePositions ? offsetX + o.x * scale : undefined,
+        y: usePositions ? offsetY + o.y * scale : undefined
+      }));
+    const first = notes.length ? notes[0].timeMs : 0;
+    const last = notes.length ? notes[notes.length - 1].timeMs : 0;
+    const title = `${info.artist ? info.artist + " - " : ""}${info.title} [${info.version}]`;
+    const buffer = song.buffer;
+    return {
+      key: "osu." + hashText(song.fileName + ":" + info.version),
+      title,
+      durationMs: Math.min(fullMs, last + 3000),
+      timeLimited: false,
+      notes,
+      lines: [],
+      diff: d,
+      leadInMs: Math.max(LEAD_IN_MS, info.leadInMs, d.approachMs - first + 600),
+      background: song.background,
+      schedule(a0) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(masterGain);
+        src.start(a0);
+        scheduledSources.push(src);
+      }
+    };
+  }
+
+  function osuSongReady() {
+    return Boolean(osuSong.buffer && selectedOsuMap() && !osuSong.loading);
+  }
+
+  function renderOsuStatus() {
+    osuStatusEl.className = "song-status";
+    osuVersionRow.hidden = osuSong.maps.length < 2;
+    if (osuSong.error) {
+      osuStatusEl.classList.add("error");
+      osuStatusEl.textContent = osuSong.error;
+      return;
+    }
+    if (osuSong.loading) {
+      osuStatusEl.textContent = `正在讀取「${osuSong.fileName}」……`;
+      return;
+    }
+    const map = selectedOsuMap();
+    if (!map || !osuSong.buffer) {
+      osuStatusEl.textContent = "到 osu! 官網（osu.ppy.sh，需登入）或其他譜面站下載 .osz 譜面，再從這裡選檔。檔案只在這個瀏覽器裡讀取，不會上傳。";
+      return;
+    }
+    const info = map.info;
+    const preview = buildOsuChart(osuSong, difficultyKey);
+    const sliders = info.objects.filter((o) => o.slider).length;
+    const notes = [];
+    if (sliders) notes.push(`滑條 ${sliders} 個當成單點`);
+    if (info.mode !== 0) notes.push(`${OSU_MODES[info.mode] || "這種"} 模式的譜面只用時間，位置由遊戲安排`);
+    const mods = preview.diff.mods ? ` · 套用 ${preview.diff.mods} 模組` : "";
+    osuStatusEl.classList.add("ready");
+    osuStatusEl.textContent = `✓ ${preview.title} · ${preview.notes.length} 個音符 · AR ${info.ar} CS ${info.cs} OD ${info.od}${mods}${notes.length ? " · " + notes.join("，") : ""}`;
+  }
+
+  async function loadOszFile(file) {
+    Object.assign(osuSong, { fileName: file.name, maps: [], selected: 0, buffer: null, background: null, loading: true, error: null });
+    renderSettings();
+    try {
+      const zip = await readZip(file);
+      const osuNames = zip.names.filter((n) => n.toLowerCase().endsWith(".osu"));
+      if (!osuNames.length) throw new Error("這個 .osz 裡沒有 .osu 譜面");
+      const decoder = new TextDecoder("utf-8");
+      const maps = [];
+      for (const entry of osuNames) {
+        const info = parseOsu(decoder.decode(await zip.read(entry)));
+        if (info.objects.length) maps.push({ entry, info });
+      }
+      if (!maps.length) throw new Error("譜面裡沒有可以打的物件");
+      // 由簡單到困難排列，預設選 osu!standard 裡最簡單的一個
+      maps.sort((a, b) => (a.info.mode !== 0) - (b.info.mode !== 0) || a.info.objects.length - b.info.objects.length);
+      const audioName = zip.find(maps[0].info.audioFile);
+      if (!audioName) throw new Error(`譜面指定的音樂檔「${maps[0].info.audioFile}」不在 .osz 裡`);
+      const audioBytes = await zip.read(audioName);
+      const ac = ensureAudioContext();
+      const buffer = await new Promise((resolve, reject) => {
+        const copy = audioBytes.slice().buffer;
+        const pr = ac.decodeAudioData(copy, resolve, reject);
+        if (pr && pr.then) pr.then(resolve, reject);
+      });
+      let background = null;
+      const bgName = maps[0].info.background && zip.find(maps[0].info.background);
+      if (bgName && typeof createImageBitmap === "function") {
+        try { background = await createImageBitmap(new Blob([await zip.read(bgName)])); } catch (e) { background = null; }
+      }
+      if (osuSong.fileName !== file.name) return; // 期間又換了別的檔案
+      Object.assign(osuSong, { maps, buffer, background, loading: false });
+      osuVersionSelect.innerHTML = "";
+      maps.forEach((m, i) => {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        opt.textContent = osuMapLabel(m.info);
+        osuVersionSelect.appendChild(opt);
+      });
+    } catch (e) {
+      osuSong.loading = false;
+      osuSong.maps = [];
+      osuSong.error = `讀不出「${file.name}」：${e && e.message ? e.message : "檔案可能損壞"}。請確認是從 osu! 下載的 .osz 譜面。`;
+    }
+    renderSettings();
+  }
+
+  oszFileInput.addEventListener("change", () => {
+    const file = oszFileInput.files && oszFileInput.files[0];
+    if (file) loadOszFile(file);
+  });
+  osuVersionSelect.addEventListener("change", () => {
+    osuSong.selected = Number(osuVersionSelect.value) || 0;
+    renderSettings();
+  });
+
+  function formatDuration(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return m + ":" + String(s).padStart(2, "0");
+  }
+
+  function songReady() {
+    if (songKey === "custom") return customSongReady();
+    if (songKey === "osu") return osuSongReady();
+    return true;
+  }
+
+  function customSongReady() {
+    return Boolean(customSong.buffer && customSong.onsets && !customSong.analyzing);
+  }
+
+  function renderSongStatus() {
+    songStatusEl.className = "song-status";
+    if (customSong.error) {
+      songStatusEl.classList.add("error");
+      songStatusEl.textContent = customSong.error;
+      return;
+    }
+    if (customSong.analyzing) {
+      songStatusEl.textContent = `正在分析「${customSong.name}」的節拍……`;
+      return;
+    }
+    if (!customSong.buffer) {
+      songStatusEl.textContent = "選一首你電腦裡的歌（mp3、m4a、wav 等）。有 .lrc 歌詞檔的話，音符上會出現歌詞。檔案只在這個瀏覽器裡播放和分析，不會上傳。";
+      return;
+    }
+    const preview = buildCustomChart(customSong, DIFFICULTIES[difficultyKey]);
+    let lyricInfo = "沒有歌詞：音符放在偵測到的節拍上";
+    if (customSong.lrc) {
+      lyricInfo = customSong.lrc.hasWordTiming
+        ? `逐字歌詞「${customSong.lrcName}」：音符跟著每個字`
+        : `逐行歌詞「${customSong.lrcName}」：每句歌詞依序排在節拍上`;
+      if (!customSong.lrc.lines.length) lyricInfo = `「${customSong.lrcName}」裡找不到 [mm:ss.xx] 時間標記，先當作沒有歌詞`;
+    }
+    songStatusEl.classList.add("ready");
+    songStatusEl.textContent = `✓ ${customSong.name}（${formatDuration(customSong.buffer.duration)}）· ${lyricInfo} · ${DIFFICULTIES[difficultyKey].label} ${preview.notes.length} 個音符`;
+  }
+
+  async function loadAudioFile(file) {
+    customSong.name = file.name;
+    customSong.size = file.size;
+    customSong.buffer = null;
+    customSong.onsets = null;
+    customSong.error = null;
+    customSong.analyzing = true;
+    renderSettings();
+    try {
+      const data = await file.arrayBuffer();
+      const ac = ensureAudioContext();
+      const buffer = await new Promise((resolve, reject) => {
+        const p = ac.decodeAudioData(data, resolve, reject);
+        if (p && p.then) p.then(resolve, reject);
+      });
+      // 讓「分析中」的字先畫出來，再做比較重的運算
+      await new Promise((r) => setTimeout(r, 30));
+      if (customSong.name !== file.name) return; // 期間又換了別的檔案
+      customSong.buffer = buffer;
+      customSong.onsets = detectOnsets(buffer);
+    } catch (e) {
+      customSong.error = `讀不出「${file.name}」的聲音。換一個 mp3、m4a 或 wav 檔試試。`;
+    }
+    customSong.analyzing = false;
+    renderSettings();
+  }
+
+  async function loadLrcFile(file) {
+    try {
+      const text = await file.text();
+      customSong.lrc = parseLrc(text);
+      customSong.lrcName = file.name;
+    } catch (e) {
+      customSong.lrc = null;
+      customSong.lrcName = null;
+      customSong.error = `讀不出歌詞檔「${file.name}」。`;
+    }
+    renderSettings();
+  }
+
+  audioFileInput.addEventListener("change", () => {
+    const file = audioFileInput.files && audioFileInput.files[0];
+    if (file) loadAudioFile(file);
+  });
+  lrcFileInput.addEventListener("change", () => {
+    const file = lrcFileInput.files && lrcFileInput.files[0];
+    if (file) {
+      customSong.error = null;
+      loadLrcFile(file);
+    } else {
+      customSong.lrc = null;
+      customSong.lrcName = null;
+      renderSettings();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // 時間：以 AudioContext 時鐘為唯一時間來源。音樂、音符出現、判定、倒數都看同一個時鐘，
+  // 暫停時把 AudioContext 停住，所有東西就一起停住，不會跑掉。
+  // ---------------------------------------------------------------------
+  function songMs() {
+    return (audioCtx.currentTime - songStartAudioTime) * 1000;
+  }
+  // 玩家實際「聽到」的時間：扣掉音訊延遲校正（耳機、藍牙喇叭通常會晚一點）
+  function playerMs() {
+    return songMs() - offsetMs;
+  }
+
+  function accuracyPct() {
+    return judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 100;
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = String(score);
+    comboEl.textContent = String(combo);
+    accEl.textContent = accuracyPct().toFixed(1);
+    hpFillEl.style.width = hp + "%";
+    hpFillEl.className = "bar-fill " + (hp <= 25 ? "danger" : hp <= 55 ? "warn" : "");
+  }
+
+  function updateClockHUD(ms) {
+    const totalS = chart ? chart.durationMs / 1000 : GAME_SECONDS;
+    const remaining = clamp(totalS - Math.max(0, ms) / 1000, 0, totalS);
+    timeEl.textContent = String(Math.ceil(remaining));
+    timeFillEl.style.width = (remaining / totalS) * 100 + "%";
+  }
+
+  function resetState() {
+    diff = chart.diff || DIFFICULTIES[difficultyKey];
+    const shownWidth = canvas.getBoundingClientRect().width || W;
+    sizeScale = clamp(560 / shownWidth, 1, 1.7);
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    hp = 100;
+    targets = [];
+    popEffects = [];
+    particles = [];
+    comboBanners = [];
+    lastPlaced = null;
+    nextSpawnIndex = 0;
+    currentLineIndex = null;
+    judgedCount = 0;
+    accuracyPoints = 0;
+    counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
+    hitErrors = [];
+    karaokeSpans = [];
+    lyricTicker.textContent = "♪ " + chart.title;
+    updateClockHUD(0);
+    updateHUD();
+  }
+
+  // 依目前整句歌詞，重建逐字高亮用的 <span>，仿照 Better Lyrics 等擴充套件的卡拉OK效果
+  function showLyricLine(lineIndex) {
+    currentLineIndex = lineIndex;
+    lyricTicker.innerHTML = "";
+    karaokeSpans = [];
+    const line = chart.lines[lineIndex];
+    if (!line) {
+      lyricTicker.textContent = "♪ " + chart.title + " ♪";
+      return;
+    }
+    line.tokens.forEach((tok, i) => {
+      const el = document.createElement("span");
+      el.className = "syl";
+      el.textContent = tok.text;
+      lyricTicker.appendChild(el);
+      const next = line.tokens[i + 1];
+      if (next && !(HAS_CJK.test(tok.text.slice(-1)) && HAS_CJK.test(next.text[0]))) lyricTicker.appendChild(document.createTextNode(" "));
+      karaokeSpans.push({ el, absStart: tok.startMs, absEnd: tok.endMs });
+    });
+  }
+
+  function updateKaraokeHighlight(ms) {
+    for (const s of karaokeSpans) {
+      const cls = ms >= s.absEnd ? "syl sung" : ms >= s.absStart ? "syl active" : "syl";
+      if (s.el.className !== cls) s.el.className = cls;
+    }
+  }
+
+  // osu 式的位置安排：每個音符從上一個音符「跳」一段距離出去，
+  // 並避開畫面上還沒打掉的音符，避免兩個圈疊在一起看不清楚。
+  function placeTarget(r) {
+    const margin = r + 20;
+    const minX = margin, maxX = W - margin, minY = margin + 20, maxY = H - margin;
+    let best = null;
+    let bestClearance = -Infinity;
+    for (let attempt = 0; attempt < 16; attempt++) {
+      let x, y;
+      if (lastPlaced) {
+        const angle = rand(0, Math.PI * 2);
+        const dist = rand(r * 2.6, r * 5.5);
+        x = clamp(lastPlaced.x + Math.cos(angle) * dist, minX, maxX);
+        y = clamp(lastPlaced.y + Math.sin(angle) * dist, minY, maxY);
+      } else {
+        x = rand(minX, maxX);
+        y = rand(minY, maxY);
+      }
+      let clearance = Infinity;
+      for (const t of targets) {
+        if (t.hit) continue;
+        clearance = Math.min(clearance, Math.hypot(x - t.x, y - t.y) - (t.r + r));
+      }
+      if (clearance > 10) return { x, y };
+      if (clearance > bestClearance) {
+        bestClearance = clearance;
+        best = { x, y };
+      }
+    }
+    return best;
+  }
+
+  function spawnTarget(note) {
+    const r = (note.held ? diff.radius * 1.2 : diff.radius) * sizeScale;
+    // osu! 譜面自帶位置；其他歌曲由遊戲安排
+    const { x, y } = note.x !== undefined ? { x: note.x, y: note.y } : placeTarget(r);
+    lastPlaced = { x, y };
+    const colorIndex = note.colorIndex !== undefined ? note.colorIndex : note.lineIndex;
+    targets.push({
+      x, y, r,
+      held: note.held,
+      char: note.label,
+      // 有歌詞的音符依歌詞行換色、osu! 譜面依 combo 換色；前奏、間奏的 ♪ 用低調的顏色
+      color: colorIndex < 0 ? INTERLUDE_COLOR : COLORS[colorIndex % COLORS.length],
+      hitMs: note.timeMs, // 這個音符「應該被打」的時間點（歌曲時間軸，毫秒）
+      hit: false
+    });
+    if (note.lineIndex !== currentLineIndex) showLyricLine(note.lineIndex);
+  }
+
+  function addPopEffect(x, y, text, color) {
+    popEffects.push({ x, y, text, color, startAt: performance.now(), life: 650 });
+  }
+
+  function spawnParticles(x, y, color) {
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n + rand(-0.2, 0.2);
+      const speed = rand(60, 160);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: color[1],
+        startAt: performance.now(),
+        life: 500
+      });
+    }
+  }
+
+  function showComboBanner(n) {
+    comboBanners.push({ text: n + " COMBO!", startAt: performance.now(), life: 800 });
+  }
+
+  // 依「打的時間」與「應該打的時間」的誤差判定
+  function judgeError(errMs) {
+    const abs = Math.abs(errMs);
+    if (abs <= diff.perfect) return "PERFECT";
+    if (abs <= diff.great) return "GREAT";
+    if (abs <= diff.ok) return "OK";
+    return null; // 超出判定範圍
+  }
+
+  function handleHit(target, errMs) {
+    target.hit = true;
+    const j = judgeError(errMs);
+    const info = JUDGEMENT_INFO[j];
+
+    combo += 1;
+    if (combo > maxCombo) maxCombo = combo;
+    const comboBonus = Math.min(combo, 20) * 2;
+    const gained = info.base + comboBonus;
+    score += gained;
+
+    judgedCount += 1;
+    accuracyPoints += info.base;
+    counts[j] += 1;
+    hitErrors.push(errMs);
+    hp = clamp(hp + info.hp, 0, 100);
+
+    updateHUD();
+    playHitSound(j);
+    const timing = j === "PERFECT" ? "" : errMs < 0 ? " 偏早" : " 偏晚";
+    addPopEffect(target.x, target.y, j + timing + " +" + gained, info.color);
+    spawnParticles(target.x, target.y, target.color);
+    if (combo > 0 && combo % 10 === 0) showComboBanner(combo);
+  }
+
+  function handleMiss(target) {
+    combo = 0;
+    judgedCount += 1;
+    counts.MISS += 1;
+    hp = clamp(hp - diff.missHp, 0, 100);
+    updateHUD();
+    addPopEffect(target.x, target.y, "MISS", JUDGEMENT_INFO.MISS.color);
+    if (hp <= 0) endGame(true);
+  }
+
+  function pointerToCanvas(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) * (W / rect.width),
+      y: (clientY - rect.top) * (H / rect.height)
+    };
+  }
+
+  // 在畫布座標 (x, y) 嘗試擊中音符：滑鼠／觸控點擊，或 Z / X 鍵配合準星，都會呼叫這裡。
+  // 跟 osu 一樣，圈疊在一起時優先打「最早該打」的那顆；還太早（超出判定範圍）的音符不會被打掉。
+  function attemptHit(x, y) {
+    if (state !== "playing") return;
+    const now = playerMs();
+    let best = null;
+    for (const t of targets) {
+      if (t.hit) continue;
+      if (Math.hypot(x - t.x, y - t.y) > t.r) continue;
+      if (now - t.hitMs < -diff.ok) continue;
+      if (!best || t.hitMs < best.hitMs) best = t;
+    }
+    if (best) handleHit(best, now - best.hitMs);
+  }
+
+  function onPointerDown(clientX, clientY) {
+    const { x, y } = pointerToCanvas(clientX, clientY);
+    aimPoint = { x, y };
+    attemptHit(x, y);
+  }
+
+  canvas.addEventListener("mousedown", (e) => onPointerDown(e.clientX, e.clientY));
+  canvas.addEventListener("mousemove", (e) => {
+    aimPoint = pointerToCanvas(e.clientX, e.clientY);
+  });
+  canvas.addEventListener(
+    "touchstart",
+    (e) => {
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      if (touch) onPointerDown(touch.clientX, touch.clientY);
+    },
+    { passive: false }
+  );
+  canvas.addEventListener(
+    "touchmove",
+    (e) => {
+      const touch = e.changedTouches[0];
+      if (touch) aimPoint = pointerToCanvas(touch.clientX, touch.clientY);
+    },
+    { passive: true }
+  );
+
+  window.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+    // Z / X 鍵：瞄準用滑鼠／觸控移動，擊發用鍵盤，符合 osu! 一類節奏遊戲的操作習慣
+    if (key === "z" || key === "x") {
+      if (state !== "playing" || e.repeat) return;
+      e.preventDefault();
+      attemptHit(aimPoint.x, aimPoint.y);
+      return;
+    }
+    if (key === "escape" || key === "p") {
+      if (state === "playing") pauseGame();
+      else if (state === "paused") resumeGame();
+      return;
+    }
+    // Enter / 空白鍵：在選單或結算畫面直接開始（焦點在按鈕或輸入框上時交給它們自己處理，避免觸發兩次）
+    if ((key === "enter" || key === " ") && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) {
+      if (state === "idle" || state === "ended") {
+        e.preventDefault();
+        startGame();
+      } else if (state === "paused") {
+        e.preventDefault();
+        resumeGame();
+      }
+    }
+  });
+
+  function renderMuteButton() {
+    muteBtn.textContent = audioEnabled ? "🔊" : "🔇";
+    muteBtn.setAttribute("aria-pressed", String(!audioEnabled));
+  }
+  muteBtn.addEventListener("click", () => {
+    audioEnabled = !audioEnabled;
+    saveSetting("audioEnabled", audioEnabled);
+    renderMuteButton();
+    if (masterGain) masterGain.gain.value = audioEnabled ? 1 : 0;
+  });
+
+  // ---- 設定：歌曲、難度、音訊延遲校正 ----
+  function currentBestKey() {
+    if (songKey === "twinkle") return "best." + difficultyKey;
+    if (songKey === "osu") {
+      const map = selectedOsuMap();
+      return map ? "best.osu." + hashText(osuSong.fileName + ":" + map.info.version) + "." + difficultyKey : null;
+    }
+    if (!customSong.name) return null;
+    return "best.custom." + hashText(customSong.name + ":" + customSong.size) + "." + difficultyKey;
+  }
+
+  function renderSettings() {
+    document.querySelectorAll("[data-diff]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.diff === difficultyKey));
+    });
+    document.querySelectorAll("[data-song]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.song === songKey));
+    });
+    customSongEl.hidden = songKey !== "custom";
+    osuSongEl.hidden = songKey !== "osu";
+    if (songKey === "custom") renderSongStatus();
+    if (songKey === "osu") renderOsuStatus();
+    const osuMap = selectedOsuMap();
+    subtitleEl.textContent = songKey === "twinkle"
+      ? "歌曲：Twinkle Twinkle Little Star（經典英文兒歌，公共領域）"
+      : songKey === "osu"
+        ? osuMap && osuSong.buffer ? `osu! 譜面：${osuMap.info.artist ? osuMap.info.artist + " - " : ""}${osuMap.info.title} [${osuMap.info.version}]（譜面作者 ${osuMap.info.creator || "不明"}）` : "osu! 譜面：選一個你下載的 .osz 檔"
+        : customSong.name ? "歌曲：" + customSong.name.replace(/\.[^.]+$/, "") + "（你的音樂）" : "歌曲：從你的電腦選一首歌";
+    offsetInput.value = String(offsetMs);
+    offsetValEl.textContent = (offsetMs > 0 ? "+" : "") + offsetMs + " ms";
+    startBtn.disabled = !songReady();
+
+    const label = DIFFICULTIES[difficultyKey].label;
+    const key = currentBestKey();
+    const best = key ? loadSetting(key, null) : null;
+    if (!key) bestLineEl.textContent = "";
+    else bestLineEl.textContent = best
+      ? `「${label}」最佳紀錄：${best.score} 分（${best.grade}，${best.acc}%）`
+      : `「${label}」還沒有紀錄，來挑戰看看吧！`;
+  }
+  document.querySelectorAll("[data-diff]").forEach((b) => {
+    b.addEventListener("click", () => {
+      difficultyKey = b.dataset.diff;
+      saveSetting("difficulty", difficultyKey);
+      renderSettings();
+    });
+  });
+  document.querySelectorAll("[data-song]").forEach((b) => {
+    b.addEventListener("click", () => {
+      songKey = b.dataset.song;
+      saveSetting("song", songKey);
+      renderSettings();
+    });
+  });
+  offsetInput.addEventListener("input", () => {
+    offsetMs = clamp(Number(offsetInput.value) || 0, -150, 150);
+    saveSetting("offsetMs", offsetMs);
+    renderSettings();
+  });
+
+  function showPanel(panel) {
+    for (const p of [menuPanel, pausePanel, resultPanel]) p.classList.toggle("hidden", p !== panel);
+    overlay.classList.toggle("hidden", panel === null);
+    gameWrap.classList.toggle("panel-open", panel !== null);
+  }
+
+  // ---- 繪圖 ----
+  function drawBackground() {
+    ctx.clearRect(0, 0, W, H);
+    const bg = chart && state !== "idle" ? chart.background : null;
+    if (bg) {
+      // 譜面背景圖：等比例裁切鋪滿，再壓暗，避免搶走音符的注意力
+      const s = Math.max(W / bg.width, H / bg.height);
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.drawImage(bg, (W - bg.width * s) / 2, (H - bg.height * s) / 2, bg.width * s, bg.height * s);
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "#5a4a80";
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx <= W; gx += 40) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, H);
+      ctx.stroke();
+    }
+    for (let gy = 0; gy <= H; gy += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(W, gy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // osu 式的「跟隨線」：把畫面上依序要打的音符連起來，提示下一顆在哪
+  function drawFollowLines() {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+    for (let i = 1; i < targets.length; i++) {
+      const a = targets[i - 1];
+      const b = targets[i];
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d <= a.r + b.r) continue;
+      const ux = (b.x - a.x) / d;
+      const uy = (b.y - a.y) / d;
+      ctx.beginPath();
+      ctx.moveTo(a.x + ux * (a.r + 4), a.y + uy * (a.r + 4));
+      ctx.lineTo(b.x - ux * (b.r + 4), b.y - uy * (b.r + 4));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function fitLabel(text, maxWidth) {
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let s = text;
+    while (s.length > 1 && ctx.measureText(s + "…").width > maxWidth) s = s.slice(0, -1);
+    return s + "…";
+  }
+
+  function drawTarget(t, now) {
+    const progress = clamp((now - (t.hitMs - diff.approachMs)) / diff.approachMs, 0, 1);
+    const late = Math.max(0, now - t.hitMs) / diff.ok;
+    const outerR = t.r + (1 - progress) * t.r * 2.2;
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, progress * 4) * (1 - late * 0.6);
+
+    // 外圈（縮小指示圈）
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, outerR, 0, Math.PI * 2);
+    ctx.strokeStyle = t.color[1];
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // 長音（held）音符加上第二道光環，視覺上區隔延音字
+    if (t.held) {
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 本體圓圈
+    const grad = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.r);
+    grad.addColorStop(0, t.color[1]);
+    grad.addColorStop(1, t.color[0]);
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.stroke();
+
+    // 歌詞文字（字太長時先縮小，還是太長就加刪節號）
+    ctx.fillStyle = "#1b1030";
+    let fontSize = Math.round(t.r * 0.5);
+    ctx.font = `bold ${fontSize}px 'Microsoft JhengHei', sans-serif`;
+    while (fontSize > 11 && ctx.measureText(t.char).width > t.r * 1.7) {
+      fontSize -= 1;
+      ctx.font = `bold ${fontSize}px 'Microsoft JhengHei', sans-serif`;
+    }
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(fitLabel(t.char, t.r * 1.8), t.x, t.y + 1);
+    ctx.restore();
+  }
+
+  function drawPopEffects(now) {
+    popEffects = popEffects.filter((p) => now - p.startAt < p.life);
+    for (const p of popEffects) {
+      const t = (now - p.startAt) / p.life;
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color;
+      ctx.font = "bold 18px 'Microsoft JhengHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(p.text, p.x, p.y - t * 30 - 10);
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(now) {
+    particles = particles.filter((p) => now - p.startAt < p.life);
+    for (const p of particles) {
+      const t = (now - p.startAt) / p.life;
+      const px = p.x + p.vx * (t * (p.life / 1000));
+      const py = p.y + p.vy * (t * (p.life / 1000)) + 40 * t * t; // 些微重力
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(px, py, 3 * (1 - t) + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawAimReticle() {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(aimPoint.x, aimPoint.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(aimPoint.x - 16, aimPoint.y);
+    ctx.lineTo(aimPoint.x - 6, aimPoint.y);
+    ctx.moveTo(aimPoint.x + 6, aimPoint.y);
+    ctx.lineTo(aimPoint.x + 16, aimPoint.y);
+    ctx.moveTo(aimPoint.x, aimPoint.y - 16);
+    ctx.lineTo(aimPoint.x, aimPoint.y - 6);
+    ctx.moveTo(aimPoint.x, aimPoint.y + 6);
+    ctx.lineTo(aimPoint.x, aimPoint.y + 16);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawComboBanners(now) {
+    comboBanners = comboBanners.filter((b) => now - b.startAt < b.life);
+    for (const b of comboBanners) {
+      const t = (now - b.startAt) / b.life;
+      const scale = 1 + (1 - t) * 0.3;
+      ctx.save();
+      ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+      ctx.translate(W / 2, 70);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#ffd76f";
+      ctx.font = "bold 34px 'Microsoft JhengHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "rgba(255, 215, 111, 0.8)";
+      ctx.shadowBlur = 16;
+      ctx.fillText(b.text, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  // 開局倒數：讓玩家看到「3、2、1」再開始
+  function drawLeadIn(ms) {
+    if (ms >= 0) return;
+    const n = Math.ceil(-ms / 500);
+    if (n > 3) return;
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "bold 64px 'Microsoft JhengHei', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(n), W / 2, H / 2);
+    ctx.restore();
+  }
+
+  function drawFrame(ms) {
+    const wall = performance.now();
+    drawBackground();
+    drawFollowLines();
+    // 先畫較晚的音符，讓最早該打的那顆疊在最上面
+    for (let i = targets.length - 1; i >= 0; i--) drawTarget(targets[i], ms);
+    drawParticles(wall);
+    drawPopEffects(wall);
+    drawComboBanners(wall);
+    drawLeadIn(ms);
+    drawAimReticle();
+  }
+
+  function gameLoop() {
+    rafId = null;
+    if (state !== "playing") return;
+    const now = playerMs();
+
+    // 依歌曲時間軸，依序讓輪到的音符出現。
+    // 音符要提前 approachMs 出現，讓縮圈動畫縮到定位的瞬間，正好對上音樂實際播放該音的時間點。
+    const notes = chart.notes;
+    while (nextSpawnIndex < notes.length && now >= notes[nextSpawnIndex].timeMs - diff.approachMs) {
+      spawnTarget(notes[nextSpawnIndex]);
+      nextSpawnIndex++;
+    }
+
+    updateKaraokeHighlight(now);
+    updateClockHUD(now);
+
+    // 移除逾時未點中的音符（記為 MISS）
+    for (const t of targets) {
+      if (!t.hit && now - t.hitMs > diff.ok) {
+        t.hit = true;
+        handleMiss(t);
+        if (state !== "playing") return; // HP 歸零，已經結束
+      }
+    }
+    targets = targets.filter((t) => !t.hit);
+
+    if (now >= chart.durationMs) {
+      endGame(false);
+      return;
+    }
+
+    drawFrame(now);
+    rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function startGame() {
+    if (!songReady()) {
+      showPanel(menuPanel);
+      renderSettings();
+      return;
+    }
+    chart = songKey === "custom"
+      ? buildCustomChart(customSong, DIFFICULTIES[difficultyKey])
+      : songKey === "osu" ? buildOsuChart(osuSong, difficultyKey) : buildTwinkleChart();
+    resetState();
+    stopAllAudio();
+    const ac = ensureAudioContext();
+    songStartAudioTime = ac.currentTime + (chart.leadInMs || LEAD_IN_MS) / 1000;
+    chart.schedule(songStartAudioTime);
+    state = "playing";
+    showPanel(null);
+    pauseBtn.disabled = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function pauseGame() {
+    if (state !== "playing") return;
+    state = "paused";
+    if (audioCtx) audioCtx.suspend();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    pauseBtn.textContent = "▶";
+    pauseBtn.title = "繼續（Esc / P）";
+    showPanel(pausePanel);
+    $("resumeBtn").focus();
+  }
+
+  function resumeGame() {
+    if (state !== "paused") return;
+    state = "playing";
+    pauseBtn.textContent = "⏸";
+    pauseBtn.title = "暫停（Esc / P）";
+    showPanel(null);
+    const resume = audioCtx ? audioCtx.resume() : Promise.resolve();
+    resume.then(() => {
+      if (state === "playing" && !rafId) rafId = requestAnimationFrame(gameLoop);
+    });
+  }
+
+  function backToMenu() {
+    state = "idle";
+    stopAllAudio();
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    targets = [];
+    pauseBtn.disabled = true;
+    pauseBtn.textContent = "⏸";
+    lyricTicker.textContent = IDLE_TICKER;
+    drawBackground();
+    renderSettings();
+    showPanel(menuPanel);
+  }
+
+  function computeRank(failed) {
+    if (failed) return { grade: "F", color: "#ff6f7f" };
+    const acc = judgedCount > 0 ? accuracyPct() : 0;
+    if (acc >= 95 && counts.MISS === 0) return { grade: "SS", color: "#ffd76f" };
+    if (acc >= 90) return { grade: "S", color: "#ff9ecb" };
+    if (acc >= 80) return { grade: "A", color: "#a6ff6f" };
+    if (acc >= 70) return { grade: "B", color: "#9ee9ff" };
+    if (acc >= 50) return { grade: "C", color: "#c88bff" };
+    return { grade: "D", color: "#8f8899" };
+  }
+
+  // 依擊中誤差的平均值，告訴玩家整體偏早還是偏晚，並建議怎麼調音訊延遲校正
+  function describeTiming() {
+    if (hitErrors.length < 5) return "";
+    const mean = hitErrors.reduce((a, b) => a + b, 0) / hitErrors.length;
+    const rounded = Math.round(mean);
+    if (Math.abs(rounded) < 15) return `平均誤差 ${rounded >= 0 ? "+" : ""}${rounded} ms，節奏抓得很準！`;
+    const suggestion = clamp(Math.round((offsetMs + mean) / 10) * 10, -150, 150);
+    return `平均${mean > 0 ? "偏晚" : "偏早"} ${Math.abs(rounded)} ms。如果你覺得自己是跟著音樂打的，可以到主選單把「音訊延遲校正」調到約 ${suggestion > 0 ? "+" : ""}${suggestion} ms 試試。`;
+  }
+
+  function endGame(failed) {
+    if (state === "ended") return;
+    state = "ended";
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    stopAllAudio();
+    targets = [];
+    pauseBtn.disabled = true;
+    drawBackground();
+
+    const acc = judgedCount > 0 ? accuracyPct() : 0;
+    const rank = computeRank(failed);
+
+    // 最佳紀錄（挑戰失敗不列入）
+    let isRecord = false;
+    const bestKey = currentBestKey();
+    if (!failed && bestKey) {
+      const best = loadSetting(bestKey, null);
+      if (!best || score > best.score) {
+        isRecord = true;
+        saveSetting(bestKey, { score, grade: rank.grade, acc: acc.toFixed(1) });
+      }
+    }
+
+    $("resultTitle").textContent = failed
+      ? `HP 歸零，挑戰失敗！（${diff.label}）再試一次吧～`
+      : `${chart.timeLimited ? "時間到" : "歌曲結束"}！這是你在「${chart.title}・${diff.label}」的表現：`;
+    $("resultScore").textContent = `總分：${score} 分`;
+    const rankEl = $("resultRank");
+    rankEl.textContent = rank.grade;
+    rankEl.style.color = rank.color;
+    $("newRecord").hidden = !isRecord;
+    $("resMaxCombo").textContent = String(maxCombo);
+    $("resAcc").textContent = acc.toFixed(1) + "%";
+    $("resCounts").textContent = `${counts.PERFECT} / ${counts.GREAT} / ${counts.OK}`;
+    $("resMiss").textContent = String(counts.MISS);
+    $("resTiming").textContent = describeTiming();
+    showPanel(resultPanel);
+    $("restartBtn").focus();
+  }
+
+  startBtn.addEventListener("click", startGame);
+  $("restartBtn").addEventListener("click", startGame);
+  $("menuBtn").addEventListener("click", backToMenu);
+  $("resumeBtn").addEventListener("click", resumeGame);
+  $("pauseRestartBtn").addEventListener("click", () => {
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    startGame();
+  });
+  $("pauseMenuBtn").addEventListener("click", backToMenu);
+  pauseBtn.addEventListener("click", () => {
+    if (state === "playing") pauseGame();
+    else if (state === "paused") resumeGame();
+  });
+
+  // 切到別的分頁或縮小視窗時自動暫停，回來再按繼續
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state === "playing") pauseGame();
+  });
+
+  // 測試用的小介面（一般遊玩不會用到）
+  window.__twinkleDebug = {
+    getState: () => ({
+      state, score, combo, maxCombo, hp, counts: { ...counts }, difficulty: difficultyKey, offsetMs, song: songKey,
+      customReady: customSongReady(),
+      osuReady: osuSongReady(),
+      osuMaps: osuSong.maps.map((m) => osuMapLabel(m.info)),
+      diff: chart && chart.diff ? { approachMs: chart.diff.approachMs, radius: chart.diff.radius, perfect: chart.diff.perfect, ok: chart.diff.ok } : null,
+      onsetCount: customSong.onsets ? customSong.onsets.length : 0,
+      chart: chart ? { title: chart.title, durationMs: chart.durationMs, noteCount: chart.notes.length, lineCount: chart.lines.length } : null,
+      nowMs: audioCtx && (state === "playing" || state === "paused") ? playerMs() : null,
+      targets: targets.filter((t) => !t.hit).map((t) => ({ x: t.x, y: t.y, r: t.r, hitMs: t.hitMs, char: t.char }))
+    }),
+    previewChart: () => {
+      const c = songKey === "custom"
+        ? buildCustomChart(customSong, DIFFICULTIES[difficultyKey])
+        : songKey === "osu" ? buildOsuChart(osuSong, difficultyKey) : buildTwinkleChart();
+      return {
+        notes: c.notes.map((n) => ({ timeMs: n.timeMs, label: n.label, lineIndex: n.lineIndex, x: n.x, y: n.y })),
+        lines: c.lines,
+        durationMs: c.durationMs,
+        leadInMs: c.leadInMs || LEAD_IN_MS,
+        diff: c.diff || null
+      };
+    },
+    parseOsu,
+    onsets: () => (customSong.onsets || []).map((o) => o.timeMs),
+    parseLrc,
+    tokenize,
+    hitAt: attemptHit,
+    setAim: (x, y) => { aimPoint = { x, y }; }
+  };
+
+  // 初始畫面
+  renderMuteButton();
+  renderSettings();
+  showPanel(menuPanel);
+  drawBackground();
+})();
+</script>
+</body>
+</html>

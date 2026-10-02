@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "節奏擊點小遊戲 for YouTube Music",
+  "version": "1.0.0",
+  "description": "在 YouTube Music 播放頁面右下角疊加一個 osu 風格的節奏點擊小遊戲，依播放進度與自訂拍速（BPM）同步出現音符，不擷取、不下載任何音訊或歌詞內容。",
+  "permissions": [],
+  "host_permissions": ["https://music.youtube.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "節奏擊點小遊戲",
+    "default_popup": "popup.html"
+  }
+}
