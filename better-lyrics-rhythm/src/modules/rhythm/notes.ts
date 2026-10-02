@@ -133,12 +133,14 @@ function placeNotes(notes: RhythmNote[], size: PlayfieldSize, seed: number): voi
  *               falls back to one note per line where it did not; "line" always makes one per line
  * @param size - Playfield the notes are laid out on
  * @param seedText - Anything stable per song (the video id), so layouts repeat per song
+ * @param minGapMs - Notes closer than this to the previous kept note are dropped (set by difficulty)
  */
 export function buildNoteChart(
   lines: readonly RhythmLyricLine[],
   mode: NoteMode,
   size: PlayfieldSize,
-  seedText: string
+  seedText: string,
+  minGapMs: number = MIN_NOTE_GAP_MS
 ): NoteChart {
   const notes: RhythmNote[] = [];
   let hasWordTiming = false;
@@ -173,7 +175,7 @@ export function buildNoteChart(
   const playable: RhythmNote[] = [];
   for (const note of notes) {
     const previous = playable[playable.length - 1];
-    if (previous && note.timeMs - previous.timeMs < MIN_NOTE_GAP_MS) continue;
+    if (previous && note.timeMs - previous.timeMs < minGapMs) continue;
     playable.push(note);
   }
 
@@ -198,12 +200,73 @@ export const GREAT_WINDOW_MS = 180;
 
 export type Judgement = "PERFECT" | "GREAT" | "OK" | "MISS";
 
-export function judge(deltaMs: number): Judgement {
+export interface JudgementWindows {
+  perfect: number;
+  great: number;
+  ok: number;
+}
+
+export function judge(
+  deltaMs: number,
+  windows: JudgementWindows = { perfect: PERFECT_WINDOW_MS, great: GREAT_WINDOW_MS, ok: HIT_WINDOW_MS }
+): Judgement {
   const abs = Math.abs(deltaMs);
-  if (abs <= PERFECT_WINDOW_MS) return "PERFECT";
-  if (abs <= GREAT_WINDOW_MS) return "GREAT";
-  if (abs <= HIT_WINDOW_MS) return "OK";
+  if (abs <= windows.perfect) return "PERFECT";
+  if (abs <= windows.great) return "GREAT";
+  if (abs <= windows.ok) return "OK";
   return "MISS";
+}
+
+// -- Difficulty --------------------------
+
+export type DifficultyKey = "easy" | "normal" | "hard";
+
+export interface Difficulty extends JudgementWindows {
+  label: string;
+  /** How long a target is on screen before it is due. */
+  approachMs: number;
+  /** Target radius on the 400×260 playfield. */
+  radius: number;
+  /** Minimum time between two notes; denser lyrics are thinned to this. */
+  minGapMs: number;
+}
+
+export const DIFFICULTIES: Record<DifficultyKey, Difficulty> = {
+  easy: { label: "簡單", approachMs: 1150, radius: 32, perfect: 110, great: 220, ok: 330, minGapMs: 300 },
+  normal: {
+    label: "普通",
+    approachMs: 900,
+    radius: 26,
+    perfect: PERFECT_WINDOW_MS,
+    great: GREAT_WINDOW_MS,
+    ok: HIT_WINDOW_MS,
+    minGapMs: MIN_NOTE_GAP_MS,
+  },
+  hard: { label: "困難", approachMs: 650, radius: 21, perfect: 60, great: 130, ok: 220, minGapMs: 100 },
+};
+
+export function isDifficultyKey(value: unknown): value is DifficultyKey {
+  return value === "easy" || value === "normal" || value === "hard";
+}
+
+/**
+ * Turns the player's average hit error into a suggestion for Better Lyrics' own lyric offset, which
+ * moves the side panel and the game together. Positive errors mean the player hit after the note,
+ * so the lyrics run early for them and the offset should grow (lyrics later).
+ *
+ * @returns A sentence for the results screen, or "" when there are too few hits to say anything
+ */
+export function describeTiming(errorsMs: readonly number[]): string {
+  if (errorsMs.length < 5) return "";
+  const mean = errorsMs.reduce((sum, e) => sum + e, 0) / errorsMs.length;
+  const rounded = Math.round(mean);
+  if (Math.abs(rounded) < 25) return `平均誤差 ${rounded >= 0 ? "+" : ""}${rounded} ms，節奏抓得很準！`;
+  const direction = mean > 0 ? "偏晚" : "偏早";
+  if (Math.abs(mean) < 50) return `平均${direction} ${Math.abs(rounded)} ms，還在正常範圍內。`;
+  // Better Lyrics nudges offsets in 0.1 s steps; never suggest less than one step.
+  const step = (Math.sign(mean) * Math.max(1, Math.round(Math.abs(mean) / 100))) / 10;
+  const stepText = `${step > 0 ? "+" : ""}${step.toFixed(1)}`;
+  return `平均${direction} ${Math.abs(rounded)} ms。如果你是跟著歌聲打的，這首歌的歌詞時間可能${mean > 0 ? "早" : "晚"}了一點：把 Better Lyrics 的歌詞偏移調 ${stepText} 秒左右試試，歌詞和音符會一起移動。`;
 }
 
 export const JUDGEMENT_POINTS: Record<Judgement, number> = { PERFECT: 300, GREAT: 100, OK: 50, MISS: 0 };

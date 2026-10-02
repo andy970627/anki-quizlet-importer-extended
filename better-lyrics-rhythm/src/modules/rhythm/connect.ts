@@ -51,6 +51,16 @@ export function initLyricRhythmMode(): RhythmGameController {
         return (AppState.globalLyricOffset + AppState.lyricOffset + trim) * 1000;
       },
       seekTo: seekPlayer,
+      // The extension's own storage, so best scores survive reloads and stay out of the page's storage.
+      storage: {
+        async get(key) {
+          const items = await chrome.storage.local.get(key);
+          return items[key];
+        },
+        set(key, value) {
+          void chrome.storage.local.set({ [key]: value });
+        },
+      },
     },
     { playerTimeEvent: PLAYER_TIME_EVENT }
   );

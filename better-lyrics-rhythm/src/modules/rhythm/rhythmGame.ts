@@ -14,7 +14,10 @@
 import {
   buildNoteChart,
   computeRank,
-  HIT_WINDOW_MS,
+  DIFFICULTIES,
+  type DifficultyKey,
+  describeTiming,
+  isDifficultyKey,
   isUnsynced,
   type Judgement,
   JUDGEMENT_POINTS,
@@ -34,6 +37,21 @@ export interface RhythmGameSource {
   /** Milliseconds to subtract from player time to land on the lyric timeline (the user's offsets). */
   getOffsetMs(): number;
   seekTo(timeS: number): void;
+  /** Per-user storage for the game's settings and best scores (chrome.storage in the extension). */
+  storage?: {
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown): void;
+  };
+}
+
+interface BestRecord {
+  score: number;
+  rank: string;
+  accuracy: string;
+}
+
+function isBestRecord(value: unknown): value is BestRecord {
+  return typeof value === "object" && value !== null && typeof (value as BestRecord).score === "number";
 }
 
 interface PlayerTimeDetail {
@@ -73,6 +91,8 @@ export interface RhythmGameController {
       maxCombo: number;
       counts: Record<Judgement, number>;
       noteCount: number;
+      difficulty: DifficultyKey;
+      best: BestRecord | null;
       activeTargets: { x: number; y: number; timeMs: number; label: string }[];
       lyricMs: number;
       status: string;
@@ -84,8 +104,7 @@ export interface RhythmGameController {
 
 const FIELD_W = 400;
 const FIELD_H = 260;
-const TARGET_RADIUS = 26;
-const APPROACH_MS = 900;
+const STORAGE_PREFIX = "rhythmMode:";
 /** A jump in reported player time bigger than this, beyond what the clock predicted, is a seek. */
 const SEEK_THRESHOLD_S = 0.6;
 const POPUP_LIFE_MS = 550;
@@ -167,6 +186,10 @@ const STYLE = `
   .btn.secondary { background: rgba(255,255,255,0.12); color: #f5f2ff; }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .status { margin-top: 6px; font-size: 11px; color: #b7a6e0; line-height: 1.5; }
+  .record { color: #ffd76f; font-weight: 800; letter-spacing: 1px; }
+  .record[hidden] { display: none; }
+  .timing { max-width: 340px; padding: 0 12px; font-size: 11.5px; line-height: 1.5; color: #d9c9ff; }
+  .status.best { color: #ffd76f; }
   kbd {
     display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 10.5px;
     background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
@@ -178,7 +201,10 @@ const TEMPLATE = `
   <section class="panel" hidden aria-label="歌詞節奏模式">
     <div class="titlebar">
       <span>♪ 歌詞節奏模式</span>
-      <button type="button" data-action="close" title="關閉">✕</button>
+      <span>
+        <button type="button" data-action="sound" title="打擊音效" aria-pressed="true">🔊</button>
+        <button type="button" data-action="close" title="關閉">✕</button>
+      </span>
     </div>
     <div class="body">
       <div class="hud">
@@ -192,6 +218,8 @@ const TEMPLATE = `
           <div class="rank" data-result="rank">S</div>
           <div data-result="score"></div>
           <div data-result="detail"></div>
+          <div class="record" data-result="record" hidden>★ 這首歌的新紀錄！</div>
+          <div class="timing" data-result="timing"></div>
           <div class="controls" style="justify-content:center">
             <button class="btn" type="button" data-action="retry">從頭再玩</button>
             <button class="btn secondary" type="button" data-action="dismiss">關閉結果</button>
@@ -201,13 +229,19 @@ const TEMPLATE = `
       <div class="strip" data-strip></div>
       <div class="controls">
         <label>音符 <select data-mode>
-          <option value="word">逐字（需逐字同步歌詞）</option>
+          <option value="word">逐字</option>
           <option value="line">逐行</option>
+        </select></label>
+        <label>難度 <select data-difficulty>
+          <option value="easy">簡單</option>
+          <option value="normal" selected>普通</option>
+          <option value="hard">困難</option>
         </select></label>
         <button class="btn" type="button" data-action="toggle">開始</button>
         <button class="btn secondary" type="button" data-action="retry">從頭挑戰</button>
       </div>
       <div class="status" data-status></div>
+      <div class="status best" data-best></div>
       <div class="status">滑鼠/觸控點擊音符，或把準星移到音符上按 <kbd>Z</kbd> / <kbd>X</kbd>。時間若不準，用 Better Lyrics 的歌詞偏移（offset）調整，遊戲會一起套用。</div>
     </div>
   </section>
@@ -251,6 +285,9 @@ export function initRhythmGame(
   const stripEl = q<HTMLElement>("[data-strip]");
   const statusEl = q<HTMLElement>("[data-status]");
   const modeSelect = q<HTMLSelectElement>("[data-mode]");
+  const difficultySelect = q<HTMLSelectElement>("[data-difficulty]");
+  const soundBtn = q<HTMLButtonElement>('[data-action="sound"]');
+  const bestEl = q<HTMLElement>("[data-best]");
   const toggleBtn = q<HTMLButtonElement>('[data-action="toggle"]');
   const scoreEl = q<HTMLElement>('[data-hud="score"]');
   const comboEl = q<HTMLElement>('[data-hud="combo"]');
@@ -306,16 +343,20 @@ export function initRhythmGame(
   let chart: NoteChart = { notes: [], hasWordTiming: false };
   let chartKey: unknown = null;
   let chartMode: NoteMode | null = null;
+  let difficultyKey: DifficultyKey = "normal";
+  let diff = DIFFICULTIES.normal;
+  let chartDifficulty: DifficultyKey | null = null;
   let lines: readonly RhythmLyricLine[] = [];
   let lyricsState: "waiting" | "unsynced" | "ready" = "waiting";
 
   function refreshChart(): boolean {
     const lyrics = source.getLyrics();
     const key = lyrics?.key ?? null;
-    if (key === chartKey && mode === chartMode) return false;
+    if (key === chartKey && mode === chartMode && difficultyKey === chartDifficulty) return false;
 
     chartKey = key;
     chartMode = mode;
+    chartDifficulty = difficultyKey;
     lines = lyrics?.lines ?? [];
     if (!lyrics) {
       lyricsState = "waiting";
@@ -325,9 +366,16 @@ export function initRhythmGame(
       chart = { notes: [], hasWordTiming: false };
     } else {
       lyricsState = "ready";
-      chart = buildNoteChart(lines, mode, { width: FIELD_W, height: FIELD_H, margin: TARGET_RADIUS + 12 }, videoId);
+      chart = buildNoteChart(
+        lines,
+        mode,
+        { width: FIELD_W, height: FIELD_H, margin: diff.radius + 12 },
+        videoId,
+        diff.minGapMs
+      );
     }
     renderStatus();
+    void loadBest();
     return true;
   }
 
@@ -347,6 +395,93 @@ export function initRhythmGame(
     toggleBtn.disabled = state !== "playing" && chart.notes.length === 0;
   }
 
+  // -- Settings and best scores --------------------------
+
+  let best: BestRecord | null = null;
+  let bestKeyShown = "";
+
+  function bestKey(): string {
+    return `${STORAGE_PREFIX}best:${videoId}:${mode}:${difficultyKey}`;
+  }
+
+  function renderBest(): void {
+    bestEl.textContent =
+      lyricsState === "ready" && best
+        ? `這首歌「${diff.label}」最佳：${best.score} 分（${best.rank}，${best.accuracy}%）`
+        : "";
+  }
+
+  async function loadBest(): Promise<void> {
+    const key = bestKey();
+    bestKeyShown = key;
+    let stored: unknown = null;
+    try {
+      stored = (await source.storage?.get(key)) ?? null;
+    } catch {
+      stored = null;
+    }
+    if (bestKeyShown !== key) return; // the song, mode or difficulty changed while this was loading
+    best = isBestRecord(stored) ? stored : null;
+    renderBest();
+  }
+
+  /** @returns Whether this run beat the stored best for this song, mode and difficulty */
+  function saveBestIfHigher(rank: string, accuracyPct: string): boolean {
+    if (best && best.score >= score) return false;
+    best = { score, rank, accuracy: accuracyPct };
+    try {
+      source.storage?.set(bestKey(), best);
+    } catch {
+      // Storage can be unavailable (e.g. an extension reload); the record just isn't kept.
+    }
+    renderBest();
+    return true;
+  }
+
+  function setDifficulty(next: DifficultyKey): void {
+    difficultyKey = next;
+    diff = DIFFICULTIES[next];
+    difficultySelect.value = next;
+    refreshChart();
+  }
+
+  // -- Hit sounds --------------------------
+  // A short tone per hit, higher for better timing. The context is created on the click that starts a
+  // run, since pages may only start audio from a user gesture. It plays only the game's own tones.
+
+  let soundOn = true;
+  let audio: AudioContext | null = null;
+
+  function renderSound(): void {
+    soundBtn.textContent = soundOn ? "🔊" : "🔇";
+    soundBtn.setAttribute("aria-pressed", String(soundOn));
+  }
+
+  function ensureAudio(): void {
+    if (!soundOn) return;
+    try {
+      audio ??= new AudioContext();
+      if (audio.state === "suspended") void audio.resume();
+    } catch {
+      audio = null;
+    }
+  }
+
+  function playHitSound(judgement: Judgement): void {
+    if (!soundOn || !audio || judgement === "MISS") return;
+    const t = audio.currentTime;
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(judgement === "PERFECT" ? 1568 : judgement === "GREAT" ? 1318 : 1046, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.1, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  }
+
   // -- Game state --------------------------
 
   let state: GameState = "idle";
@@ -360,6 +495,8 @@ export function initRhythmGame(
   let counts: Record<Judgement, number> = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
   let aim = { x: FIELD_W / 2, y: FIELD_H / 2 };
   let lastJudgement: { judgement: Judgement; at: number } | null = null;
+  let hitErrors: number[] = [];
+  let isNewRecord = false;
 
   function judgedCount(): number {
     return counts.PERFECT + counts.GREAT + counts.OK + counts.MISS;
@@ -384,6 +521,8 @@ export function initRhythmGame(
     counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
     popups = [];
     lastJudgement = null;
+    hitErrors = [];
+    isNewRecord = false;
     renderHud();
   }
 
@@ -398,12 +537,14 @@ export function initRhythmGame(
     state = next;
     toggleBtn.textContent = state === "playing" ? "停止" : "開始";
     modeSelect.disabled = state === "playing";
+    difficultySelect.disabled = state === "playing";
     resultsEl.hidden = state !== "results";
     if (state === "results") renderResults();
     renderStatus();
   }
 
   function startGame(): void {
+    ensureAudio();
     refreshChart();
     if (chart.notes.length === 0) return;
     resetScore();
@@ -414,7 +555,12 @@ export function initRhythmGame(
 
   function stopGame(): void {
     active = [];
-    setState(judgedCount() > 0 ? "results" : "idle");
+    if (judgedCount() > 0) {
+      isNewRecord = saveBestIfHigher(computeRank(accuracy(), counts.MISS), (accuracy() * 100).toFixed(2));
+      setState("results");
+    } else {
+      setState("idle");
+    }
   }
 
   function restartFromTop(): void {
@@ -441,9 +587,11 @@ export function initRhythmGame(
       `分數 ${score} · 最大連擊 ${maxCombo} · 準確率 ${(acc * 100).toFixed(2)}%`;
     q<HTMLElement>('[data-result="detail"]').textContent =
       `PERFECT ${counts.PERFECT} · GREAT ${counts.GREAT} · OK ${counts.OK} · MISS ${counts.MISS}`;
+    q<HTMLElement>('[data-result="record"]').hidden = !isNewRecord;
+    q<HTMLElement>('[data-result="timing"]').textContent = describeTiming(hitErrors);
   }
 
-  function registerJudgement(target: ActiveTarget, judgement: Judgement): void {
+  function registerJudgement(target: ActiveTarget, judgement: Judgement, deltaMs = 0): void {
     counts[judgement]++;
     accuracyPoints += JUDGEMENT_POINTS[judgement];
     if (judgement === "MISS") {
@@ -453,13 +601,16 @@ export function initRhythmGame(
       combo++;
       maxCombo = Math.max(maxCombo, combo);
       score += JUDGEMENT_POINTS[judgement] + Math.min(combo, 20) * 2;
+      hitErrors.push(deltaMs);
+      playHitSound(judgement);
     }
     const now = performance.now();
     lastJudgement = { judgement, at: now };
     popups.push({
       x: target.note.x,
       y: target.note.y,
-      text: judgement,
+      text:
+        judgement === "MISS" || judgement === "PERFECT" ? judgement : `${judgement} ${deltaMs < 0 ? "偏早" : "偏晚"}`,
       color: JUDGEMENT_COLORS[judgement],
       bornAt: now,
     });
@@ -469,15 +620,18 @@ export function initRhythmGame(
   function attemptHit(x: number, y: number): void {
     if (state !== "playing") return;
     const lyricMs = lyricNowMs();
-    let best: ActiveTarget | null = null;
+    let due: ActiveTarget | null = null;
     for (const target of active) {
       if (target.hit) continue;
       const delta = lyricMs - target.note.timeMs;
-      if (Math.abs(delta) > HIT_WINDOW_MS) continue;
-      if (Math.hypot(x - target.note.x, y - target.note.y) > TARGET_RADIUS * 1.15) continue;
-      if (!best || target.note.timeMs < best.note.timeMs) best = target;
+      if (Math.abs(delta) > diff.ok) continue;
+      if (Math.hypot(x - target.note.x, y - target.note.y) > diff.radius * 1.15) continue;
+      if (!due || target.note.timeMs < due.note.timeMs) due = target;
     }
-    if (best) registerJudgement(best, judge(lyricMs - best.note.timeMs));
+    if (due) {
+      const delta = lyricMs - due.note.timeMs;
+      registerJudgement(due, judge(delta, diff), delta);
+    }
   }
 
   // -- Frame loop --------------------------
@@ -494,12 +648,12 @@ export function initRhythmGame(
     }
 
     const notes = chart.notes;
-    while (nextNoteIndex < notes.length && notes[nextNoteIndex].timeMs - APPROACH_MS <= lyricMs) {
+    while (nextNoteIndex < notes.length && notes[nextNoteIndex].timeMs - diff.approachMs <= lyricMs) {
       active.push({ note: notes[nextNoteIndex], hit: false });
       nextNoteIndex++;
     }
     for (const target of active) {
-      if (!target.hit && lyricMs - target.note.timeMs > HIT_WINDOW_MS) {
+      if (!target.hit && lyricMs - target.note.timeMs > diff.ok) {
         target.hit = true;
         registerJudgement(target, "MISS");
       }
@@ -526,23 +680,24 @@ export function initRhythmGame(
   function drawTarget(c: CanvasRenderingContext2D, target: ActiveTarget, lyricMs: number): void {
     const { note } = target;
     const [fill, light] = COMBO_COLORS[note.lineIndex % COMBO_COLORS.length];
-    const progress = Math.min(1, Math.max(0, (lyricMs - (note.timeMs - APPROACH_MS)) / APPROACH_MS));
-    const late = Math.max(0, lyricMs - note.timeMs) / HIT_WINDOW_MS;
+    const radius = diff.radius;
+    const progress = Math.min(1, Math.max(0, (lyricMs - (note.timeMs - diff.approachMs)) / diff.approachMs));
+    const late = Math.max(0, lyricMs - note.timeMs) / diff.ok;
     c.save();
     c.globalAlpha = Math.min(1, progress * 3) * (1 - late * 0.7);
 
     // Approach ring: shrinks onto the circle exactly when the lyric is sung.
     c.beginPath();
-    c.arc(note.x, note.y, TARGET_RADIUS * (1 + 2.2 * (1 - progress)), 0, Math.PI * 2);
+    c.arc(note.x, note.y, radius * (1 + 2.2 * (1 - progress)), 0, Math.PI * 2);
     c.strokeStyle = light;
     c.lineWidth = 2.5;
     c.stroke();
 
-    const gradient = c.createRadialGradient(note.x, note.y - 6, 3, note.x, note.y, TARGET_RADIUS);
+    const gradient = c.createRadialGradient(note.x, note.y - 6, 3, note.x, note.y, radius);
     gradient.addColorStop(0, light);
     gradient.addColorStop(1, fill);
     c.beginPath();
-    c.arc(note.x, note.y, TARGET_RADIUS, 0, Math.PI * 2);
+    c.arc(note.x, note.y, radius, 0, Math.PI * 2);
     c.fillStyle = gradient;
     c.shadowColor = fill;
     c.shadowBlur = 14;
@@ -556,18 +711,18 @@ export function initRhythmGame(
     c.textAlign = "center";
     c.textBaseline = "middle";
     c.font = "800 11px system-ui, sans-serif";
-    c.fillText(String(note.numberInLine), note.x, note.y - 10);
+    c.fillText(String(note.numberInLine), note.x, note.y - radius * 0.38);
     let fontSize = 13;
     c.font = `700 ${fontSize}px "Noto Sans TC", system-ui, sans-serif`;
-    while (fontSize > 8 && c.measureText(note.label).width > TARGET_RADIUS * 1.8) {
+    while (fontSize > 8 && c.measureText(note.label).width > radius * 1.8) {
       fontSize--;
       c.font = `700 ${fontSize}px "Noto Sans TC", system-ui, sans-serif`;
     }
     let label = note.label;
-    while (label.length > 1 && c.measureText(label).width > TARGET_RADIUS * 1.8) {
+    while (label.length > 1 && c.measureText(label).width > radius * 1.8) {
       label = `${label.slice(0, -2)}…`;
     }
-    c.fillText(label, note.x, note.y + 5);
+    c.fillText(label, note.x, note.y + radius * 0.2);
     c.restore();
   }
 
@@ -593,7 +748,7 @@ export function initRhythmGame(
       ctx.fillStyle = popup.color;
       ctx.font = "800 13px system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(popup.text, popup.x, popup.y - TARGET_RADIUS - 6 - t * 18);
+      ctx.fillText(popup.text, popup.x, popup.y - diff.radius - 6 - t * 18);
       ctx.restore();
     }
 
@@ -704,6 +859,18 @@ export function initRhythmGame(
     else if (action === "toggle") state === "playing" ? stopGame() : startGame();
     else if (action === "retry") restartFromTop();
     else if (action === "dismiss") setState("idle");
+    else if (action === "sound") {
+      soundOn = !soundOn;
+      renderSound();
+      source.storage?.set(`${STORAGE_PREFIX}sound`, soundOn);
+      if (soundOn) ensureAudio();
+    }
+  });
+  difficultySelect.addEventListener("change", () => {
+    const next = difficultySelect.value;
+    if (!isDifficultyKey(next)) return;
+    setDifficulty(next);
+    source.storage?.set(`${STORAGE_PREFIX}difficulty`, next);
   });
   modeSelect.addEventListener("change", () => {
     mode = modeSelect.value === "line" ? "line" : "word";
@@ -732,6 +899,24 @@ export function initRhythmGame(
 
   renderHud();
   renderStatus();
+  renderSound();
+  // Restore the player's last difficulty and sound choice.
+  void (async () => {
+    try {
+      const [savedDifficulty, savedSound] = await Promise.all([
+        source.storage?.get(`${STORAGE_PREFIX}difficulty`),
+        source.storage?.get(`${STORAGE_PREFIX}sound`),
+      ]);
+      // The read resolves later, possibly after a run has started; never swap the chart under a run.
+      if (isDifficultyKey(savedDifficulty) && (state as GameState) !== "playing") setDifficulty(savedDifficulty);
+      if (typeof savedSound === "boolean") {
+        soundOn = savedSound;
+        renderSound();
+      }
+    } catch {
+      // Defaults stay in place when storage is unavailable.
+    }
+  })();
 
   return {
     destroy(): void {
@@ -739,6 +924,7 @@ export function initRhythmGame(
       frameRequest = null;
       document.removeEventListener(playerTimeEvent, onPlayerTime);
       document.removeEventListener("keydown", onKeyDown, true);
+      void audio?.close();
       host.remove();
     },
     debug: {
@@ -751,6 +937,8 @@ export function initRhythmGame(
         maxCombo,
         counts: { ...counts },
         noteCount: chart.notes.length,
+        difficulty: difficultyKey,
+        best,
         activeTargets: active
           .filter(target => !target.hit)
           .map(target => ({
