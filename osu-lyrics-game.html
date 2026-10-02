@@ -269,6 +269,76 @@
     color: #8b7fb0;
     text-align: center;
   }
+  #hud .badge.time { margin-left: auto; }
+  #hudBtns { display: flex; gap: 6px; }
+  #hudBtns button {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 1.1rem;
+    padding: 6px 12px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  #hudBtns button:disabled { opacity: 0.4; cursor: default; }
+  .panel { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .panel.hidden { display: none; }
+  .panel h2 { margin: 0; font-size: 1.5rem; letter-spacing: 2px; }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: #d9c9ff;
+  }
+  .diff-group { display: flex; gap: 6px; }
+  .diff-group button {
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    font: inherit;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .diff-group button[aria-pressed="true"] {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #1b1030;
+    border-color: transparent;
+  }
+  .setting-row input[type="range"] { width: 160px; accent-color: var(--accent2); }
+  .setting-row output { min-width: 4.5em; font-variant-numeric: tabular-nums; }
+  .best-line { font-size: 0.85rem; color: #ffd76f; min-height: 1.2em; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button.game-btn.secondary {
+    background: rgba(255,255,255,0.12);
+    color: var(--text);
+    box-shadow: none;
+  }
+  .new-record {
+    color: #ffd76f;
+    font-weight: bold;
+    letter-spacing: 2px;
+    animation: sylPop 0.5s ease;
+  }
+  .timing-note { font-size: 0.82rem; color: #b7a6e0; max-width: 420px; line-height: 1.6; }
+  #overlay p.small { font-size: 0.8rem; color: #8b7fb0; }
+  @media (max-width: 560px) {
+    #hud { font-size: 0.9rem; }
+    #hud .badge { padding: 4px 10px; }
+    #lyricTicker { font-size: 1.05rem; }
+    #overlay { padding: 14px 12px; gap: 8px; }
+    /* 手機上畫布只有約 220px 高，選單放不下：選單開著時讓選單撐開高度，畫布改當背景鋪滿 */
+    #gameWrap.panel-open #overlay { position: relative; inset: auto; min-height: 260px; }
+    #gameWrap.panel-open #gameCanvas { position: absolute; inset: 0; height: 100%; }
+    #overlay p { font-size: 0.82rem; }
+    #overlay .result-score { font-size: 1.7rem; }
+    #overlay .result-rank { font-size: 2.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -279,9 +349,12 @@
   <div id="hud">
     <div class="badge score">分數：<span id="scoreVal">0</span></div>
     <div class="badge combo">連擊：<span id="comboVal">0</span></div>
-    <div class="badge acc">準度：<span id="accVal">100</span>%</div>
-    <div class="badge time">剩餘時間：<span id="timeVal">60</span> 秒</div>
-    <button id="muteBtn" title="切換音樂">🔊</button>
+    <div class="badge acc">準度：<span id="accVal">100.0</span>%</div>
+    <div class="badge time">剩餘：<span id="timeVal">60</span> 秒</div>
+    <div id="hudBtns">
+      <button id="pauseBtn" type="button" title="暫停（Esc / P）" aria-label="暫停" disabled>⏸</button>
+      <button id="muteBtn" type="button" title="切換音樂" aria-label="切換音樂">🔊</button>
+    </div>
   </div>
 
   <div id="statusBars">
@@ -296,20 +369,67 @@
   </div>
 
   <div id="lyricTicker">按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！</div>
-  <div id="keyHint">滑鼠／手指移到音符上瞄準，按 <kbd>Z</kbd> 或 <kbd>X</kbd> 擊發（也可直接點擊／觸控）</div>
+  <div id="keyHint">滑鼠／手指移到音符上瞄準，按 <kbd>Z</kbd> 或 <kbd>X</kbd> 擊發（也可直接點擊／觸控）· <kbd>Esc</kbd> 暫停</div>
 
   <div id="gameWrap">
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     <div id="overlay">
-      <p>
-        遊戲開始後會播放《Twinkle Twinkle Little Star》的旋律，<br>
-        音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
-        將準星移到音符上，並在音符圈縮小到定位的瞬間按下 <strong>Z</strong> 或 <strong>X</strong> 鍵擊發<br>
-        （滑鼠點擊／觸控也可以）：<br>
-        <strong style="color:#ff9ecb">PERFECT</strong> / <strong style="color:#ffe9a8">GREAT</strong> / <strong style="color:#9ee9ff">OK</strong> 判定會影響得分與連擊加成，<br>
-        沒點到會扣血並中斷連擊。時間限制為 <strong>60 秒</strong>，時間到即結束並顯示總分與評級。
-      </p>
-      <button class="game-btn" id="startBtn">開始遊戲</button>
+      <!-- 主選單 -->
+      <div class="panel" id="menuPanel">
+        <p>
+          遊戲開始後會播放《Twinkle Twinkle Little Star》的旋律，<br>
+          音符圓圈會依照歌詞在歌曲中出現的先後順序，依序浮現在畫面上。<br>
+          將準星移到音符上，在外圈縮小到定位的瞬間按 <strong>Z</strong> 或 <strong>X</strong> 擊發（點擊／觸控也可以）。<br>
+          <strong style="color:#ff9ecb">PERFECT</strong> / <strong style="color:#ffe9a8">GREAT</strong> / <strong style="color:#9ee9ff">OK</strong> 判定影響得分與連擊；
+          沒打到會扣血，<strong>HP 歸零就挑戰失敗</strong>。撐過 <strong>60 秒</strong>就過關！
+        </p>
+        <div class="setting-row">
+          <span>難度</span>
+          <div class="diff-group" role="group" aria-label="難度">
+            <button type="button" data-diff="easy">簡單</button>
+            <button type="button" data-diff="normal">普通</button>
+            <button type="button" data-diff="hard">困難</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label for="offsetInput">音訊延遲校正</label>
+          <input type="range" id="offsetInput" min="-150" max="150" step="10" value="0">
+          <output id="offsetVal" for="offsetInput">0 ms</output>
+        </div>
+        <div class="best-line" id="bestLine"></div>
+        <button class="game-btn" id="startBtn" type="button">開始遊戲</button>
+        <p class="small">按 <strong>Enter</strong> 或 <strong>空白鍵</strong> 也能開始</p>
+      </div>
+
+      <!-- 暫停 -->
+      <div class="panel hidden" id="pausePanel">
+        <h2>⏸ 暫停中</h2>
+        <p>音樂和時間都已停止，準備好再繼續。</p>
+        <div class="btn-row">
+          <button class="game-btn" id="resumeBtn" type="button">繼續</button>
+          <button class="game-btn secondary" id="pauseRestartBtn" type="button">重新開始</button>
+          <button class="game-btn secondary" id="pauseMenuBtn" type="button">回主選單</button>
+        </div>
+      </div>
+
+      <!-- 結算 -->
+      <div class="panel hidden" id="resultPanel">
+        <p id="resultTitle"></p>
+        <div class="result-score" id="resultScore"></div>
+        <div class="result-rank" id="resultRank"></div>
+        <div class="new-record" id="newRecord" hidden>★ 新紀錄！★</div>
+        <div class="result-grid">
+          <div><span class="k">最高連擊</span><span class="v" id="resMaxCombo"></span></div>
+          <div><span class="k">準確度</span><span class="v" id="resAcc"></span></div>
+          <div><span class="k">PERFECT / GREAT / OK</span><span class="v" id="resCounts"></span></div>
+          <div><span class="k">MISS</span><span class="v" id="resMiss"></span></div>
+        </div>
+        <div class="timing-note" id="resTiming"></div>
+        <div class="btn-row">
+          <button class="game-btn" id="restartBtn" type="button">重新開始</button>
+          <button class="game-btn secondary" id="menuBtn" type="button">回主選單</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -325,16 +445,25 @@
   const W = canvas.width;
   const H = canvas.height;
 
-  const overlay = document.getElementById("overlay");
-  const startBtn = document.getElementById("startBtn");
-  const muteBtn = document.getElementById("muteBtn");
-  const scoreEl = document.getElementById("scoreVal");
-  const comboEl = document.getElementById("comboVal");
-  const accEl = document.getElementById("accVal");
-  const timeEl = document.getElementById("timeVal");
-  const lyricTicker = document.getElementById("lyricTicker");
-  const hpFillEl = document.getElementById("hpFill");
-  const timeFillEl = document.getElementById("timeFill");
+  const $ = (id) => document.getElementById(id);
+  const overlay = $("overlay");
+  const gameWrap = $("gameWrap");
+  const menuPanel = $("menuPanel");
+  const pausePanel = $("pausePanel");
+  const resultPanel = $("resultPanel");
+  const startBtn = $("startBtn");
+  const pauseBtn = $("pauseBtn");
+  const muteBtn = $("muteBtn");
+  const scoreEl = $("scoreVal");
+  const comboEl = $("comboVal");
+  const accEl = $("accVal");
+  const timeEl = $("timeVal");
+  const lyricTicker = $("lyricTicker");
+  const hpFillEl = $("hpFill");
+  const timeFillEl = $("timeFill");
+  const offsetInput = $("offsetInput");
+  const offsetValEl = $("offsetVal");
+  const bestLineEl = $("bestLine");
 
   // ---------------------------------------------------------------------
   // 歌曲資料：《Twinkle Twinkle Little Star》（Jane Taylor, 1806 — 公共領域）
@@ -367,18 +496,20 @@
   const LOOP_MS = TOTAL_BEATS * BEAT_MS; // 一輪完整歌曲的長度（會反覆播放至 60 秒結束）
 
   const GAME_SECONDS = 60;
-  const APPROACH_MS = 800;   // 音符圈縮小到定位所需時間（判定基準點）
-  const HIT_WINDOW_MS = 380; // 縮小到定位後，可點擊得分的寬容時間
-  const PERFECT_ERR_MS = 100; // 判定誤差在此範圍內 => PERFECT
-  const GREAT_ERR_MS = 220;   // 判定誤差在此範圍內 => GREAT，其餘 => OK
-  const MAX_TARGETS = 12;
-  const BASE_RADIUS = 34;
+  const LEAD_IN_MS = 1500; // 開始後先留一點準備時間，第一個音符才不會一開局就要打
+
+  // 三種難度：縮圈時間、音符大小、判定寬容度、失誤扣血量
+  const DIFFICULTIES = {
+    easy:   { label: "簡單", approachMs: 1100, radius: 42, perfect: 110, great: 220, ok: 330, missHp: 5 },
+    normal: { label: "普通", approachMs: 800,  radius: 34, perfect: 90,  great: 180, ok: 280, missHp: 8 },
+    hard:   { label: "困難", approachMs: 600,  radius: 28, perfect: 60,  great: 130, ok: 220, missHp: 12 }
+  };
 
   const JUDGEMENT_INFO = {
     PERFECT: { base: 300, hp: 2, color: "#ff9ecb" },
     GREAT: { base: 100, hp: 1, color: "#ffe9a8" },
     OK: { base: 50, hp: 0, color: "#9ee9ff" },
-    MISS: { base: 0, hp: -8, color: "#8f8899" }
+    MISS: { base: 0, hp: 0, color: "#8f8899" }
   };
 
   const COLORS = [
@@ -389,28 +520,47 @@
     ["#c88bff", "#e0bfff"]
   ];
 
-  let state = "idle"; // idle | playing | ended
+  // ---- 本機設定與最佳紀錄（瀏覽器不允許儲存時就略過，不影響遊玩）----
+  const STORAGE_PREFIX = "twinkleRhythm.";
+  function loadSetting(key, fallback) {
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function saveSetting(key, value) {
+    try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch (e) { /* 無法儲存就算了 */ }
+  }
+
+  let difficultyKey = DIFFICULTIES[loadSetting("difficulty", "normal")] ? loadSetting("difficulty", "normal") : "normal";
+  let offsetMs = clamp(Number(loadSetting("offsetMs", 0)) || 0, -150, 150);
+  let audioEnabled = loadSetting("audioEnabled", true) !== false;
+  let diff = DIFFICULTIES[difficultyKey];
+
+  let state = "idle"; // idle | playing | paused | ended
   let score = 0;
   let combo = 0;
   let maxCombo = 0;
   let hp = 100;
-  let timeLeft = GAME_SECONDS;
   let targets = [];
   let popEffects = [];
   let particles = [];
   let comboBanners = [];
   let rafId = null;
-  let countdownId = null;
+  let lastPlaced = null; // 上一個音符的位置，用來排出 osu 式的「跳躍」動線
+  let sizeScale = 1;     // 畫面縮得很小（手機）時把音符放大，手指才點得到
 
   // 判定統計（用於準度與最終評級）
   let judgedCount = 0;
   let accuracyPoints = 0;
   let counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
+  let hitErrors = []; // 每次擊中的時間誤差（正數 = 偏晚）
 
   // ---- Web Audio：即時合成的旋律播放 ----
   let audioCtx = null;
   let masterGain = null;
-  let audioEnabled = true;
   let scheduledOscillators = [];
   let songStartAudioTime = 0; // AudioContext 時鐘上的歌曲起點（秒）
   let nextSpawnIndex = 0;     // 下一個要出現的音符（依序、累積索引）
@@ -451,6 +601,22 @@
     scheduledOscillators.push(osc);
   }
 
+  // 打擊音效：短促的「叮」，PERFECT 音高較高，讓玩家不看畫面也知道打得準不準
+  function playHitSound(judgement) {
+    if (!audioCtx || !audioEnabled) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(judgement === "PERFECT" ? 1568 : judgement === "GREAT" ? 1318 : 1046, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    osc.connect(gain).connect(masterGain);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  }
+
   function stopAllAudio() {
     scheduledOscillators.forEach((o) => {
       try { o.stop(); } catch (e) { /* 已停止則忽略 */ }
@@ -461,8 +627,7 @@
   // 預先排程整首歌曲（含重複輪播）在 Web Audio 的精準時間軸上
   function scheduleSong(totalDurationMs) {
     const ctxNow = ensureAudioContext();
-    // 留出至少一個音符「縮圈」動畫的時間，讓第一個音符也能準時對上音樂
-    const a0 = ctxNow.currentTime + APPROACH_MS / 1000 + 0.05;
+    const a0 = ctxNow.currentTime + LEAD_IN_MS / 1000;
     const loops = Math.ceil(totalDurationMs / LOOP_MS) + 1;
     for (let loop = 0; loop < loops; loop++) {
       for (const n of SONG_NOTES) {
@@ -476,34 +641,56 @@
     return a0;
   }
 
+  // 以 AudioContext 時鐘為唯一時間來源：音樂、音符出現、判定、倒數都看同一個時鐘，
+  // 暫停時把 AudioContext 停住，所有東西就一起停住，不會跑掉。
+  function songMs() {
+    return (audioCtx.currentTime - songStartAudioTime) * 1000;
+  }
+  // 玩家實際「聽到」的時間：扣掉音訊延遲校正（耳機、藍牙喇叭通常會晚一點）
+  function playerMs() {
+    return songMs() - offsetMs;
+  }
+
+  function accuracyPct() {
+    return judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 100;
+  }
+
   function updateHUD() {
     scoreEl.textContent = String(score);
     comboEl.textContent = String(combo);
-    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 100;
-    accEl.textContent = acc.toFixed(1);
+    accEl.textContent = accuracyPct().toFixed(1);
     hpFillEl.style.width = hp + "%";
     hpFillEl.className = "bar-fill " + (hp <= 25 ? "danger" : hp <= 55 ? "warn" : "");
   }
 
+  function updateClockHUD(ms) {
+    const remaining = clamp(GAME_SECONDS - Math.max(0, ms) / 1000, 0, GAME_SECONDS);
+    timeEl.textContent = String(Math.ceil(remaining));
+    timeFillEl.style.width = (remaining / GAME_SECONDS) * 100 + "%";
+  }
+
   function resetState() {
+    diff = DIFFICULTIES[difficultyKey];
+    const shownWidth = canvas.getBoundingClientRect().width || W;
+    sizeScale = clamp(560 / shownWidth, 1, 1.7);
     score = 0;
     combo = 0;
     maxCombo = 0;
     hp = 100;
-    timeLeft = GAME_SECONDS;
     targets = [];
     popEffects = [];
     particles = [];
     comboBanners = [];
+    lastPlaced = null;
     nextSpawnIndex = 0;
     currentLineIndex = -1;
     judgedCount = 0;
     accuracyPoints = 0;
     counts = { PERFECT: 0, GREAT: 0, OK: 0, MISS: 0 };
-    timeEl.textContent = String(GAME_SECONDS);
-    timeFillEl.style.width = "100%";
+    hitErrors = [];
     karaokeSpans = [];
     lyricTicker.textContent = SONG_LINES[0].text;
+    updateClockHUD(0);
     updateHUD();
   }
 
@@ -531,26 +718,56 @@
     });
   }
 
-  function updateKaraokeHighlight(elapsedAudioMs) {
+  function updateKaraokeHighlight(ms) {
     for (const s of karaokeSpans) {
-      const cls = elapsedAudioMs >= s.absEnd ? "syl sung" : elapsedAudioMs >= s.absStart ? "syl active" : "syl";
+      const cls = ms >= s.absEnd ? "syl sung" : ms >= s.absStart ? "syl active" : "syl";
       if (s.el.className !== cls) s.el.className = cls;
     }
   }
 
-  function spawnTargetFromNote(note, loopIdx) {
-    const held = note.beats >= 2;
-    const r = held ? BASE_RADIUS * 1.2 : BASE_RADIUS;
+  // osu 式的位置安排：每個音符從上一個音符「跳」一段距離出去，
+  // 並避開畫面上還沒打掉的音符，避免兩個圈疊在一起看不清楚。
+  function placeTarget(r) {
     const margin = r + 20;
-    const x = rand(margin, W - margin);
-    const y = rand(margin + 20, H - margin);
-    const color = COLORS[note.lineIndex % COLORS.length];
+    const minX = margin, maxX = W - margin, minY = margin + 20, maxY = H - margin;
+    let best = null;
+    let bestClearance = -Infinity;
+    for (let attempt = 0; attempt < 16; attempt++) {
+      let x, y;
+      if (lastPlaced) {
+        const angle = rand(0, Math.PI * 2);
+        const dist = rand(r * 2.6, r * 5.5);
+        x = clamp(lastPlaced.x + Math.cos(angle) * dist, minX, maxX);
+        y = clamp(lastPlaced.y + Math.sin(angle) * dist, minY, maxY);
+      } else {
+        x = rand(minX, maxX);
+        y = rand(minY, maxY);
+      }
+      let clearance = Infinity;
+      for (const t of targets) {
+        if (t.hit) continue;
+        clearance = Math.min(clearance, Math.hypot(x - t.x, y - t.y) - (t.r + r));
+      }
+      if (clearance > 10) return { x, y };
+      if (clearance > bestClearance) {
+        bestClearance = clearance;
+        best = { x, y };
+      }
+    }
+    return best;
+  }
+
+  function spawnTargetFromNote(note, loopIdx, hitMs) {
+    const held = note.beats >= 2;
+    const r = (held ? diff.radius * 1.2 : diff.radius) * sizeScale;
+    const { x, y } = placeTarget(r);
+    lastPlaced = { x, y };
     targets.push({
       x, y, r,
       held,
       char: note.syllable,
-      color,
-      spawnAt: performance.now(),
+      color: COLORS[note.lineIndex % COLORS.length],
+      hitMs, // 這個音符「應該被打」的時間點（歌曲時間軸，毫秒）
       hit: false
     });
 
@@ -584,17 +801,18 @@
     comboBanners.push({ text: n + " COMBO!", startAt: performance.now(), life: 800 });
   }
 
-  function judge(target, now) {
-    const elapsed = now - target.spawnAt;
-    const absErr = Math.abs(elapsed - APPROACH_MS);
-    if (absErr <= PERFECT_ERR_MS) return "PERFECT";
-    if (absErr <= GREAT_ERR_MS) return "GREAT";
-    return "OK";
+  // 依「打的時間」與「應該打的時間」的誤差判定
+  function judgeError(errMs) {
+    const abs = Math.abs(errMs);
+    if (abs <= diff.perfect) return "PERFECT";
+    if (abs <= diff.great) return "GREAT";
+    if (abs <= diff.ok) return "OK";
+    return null; // 超出判定範圍
   }
 
-  function handleHit(target, now) {
+  function handleHit(target, errMs) {
     target.hit = true;
-    const j = judge(target, now);
+    const j = judgeError(errMs);
     const info = JUDGEMENT_INFO[j];
 
     combo += 1;
@@ -606,10 +824,13 @@
     judgedCount += 1;
     accuracyPoints += info.base;
     counts[j] += 1;
+    hitErrors.push(errMs);
     hp = clamp(hp + info.hp, 0, 100);
 
     updateHUD();
-    addPopEffect(target.x, target.y, j + " +" + gained, info.color);
+    playHitSound(j);
+    const timing = j === "PERFECT" ? "" : errMs < 0 ? " 偏早" : " 偏晚";
+    addPopEffect(target.x, target.y, j + timing + " +" + gained, info.color);
     spawnParticles(target.x, target.y, target.color);
     if (combo > 0 && combo % 10 === 0) showComboBanner(combo);
   }
@@ -618,37 +839,33 @@
     combo = 0;
     judgedCount += 1;
     counts.MISS += 1;
-    hp = clamp(hp + JUDGEMENT_INFO.MISS.hp, 0, 100);
+    hp = clamp(hp - diff.missHp, 0, 100);
     updateHUD();
     addPopEffect(target.x, target.y, "MISS", JUDGEMENT_INFO.MISS.color);
+    if (hp <= 0) endGame(true);
   }
 
   function pointerToCanvas(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = W / rect.width;
-    const scaleY = H / rect.height;
     return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
+      x: (clientX - rect.left) * (W / rect.width),
+      y: (clientY - rect.top) * (H / rect.height)
     };
   }
 
-  // 在畫布座標 (x, y) 嘗試擊中音符：滑鼠／觸控點擊，或 Z / X 鍵配合準星，都會呼叫這裡
+  // 在畫布座標 (x, y) 嘗試擊中音符：滑鼠／觸控點擊，或 Z / X 鍵配合準星，都會呼叫這裡。
+  // 跟 osu 一樣，圈疊在一起時優先打「最早該打」的那顆；還太早（超出判定範圍）的音符不會被打掉。
   function attemptHit(x, y) {
     if (state !== "playing") return;
-    const now = performance.now();
-
-    // 由最新出現的音符開始檢查，較符合直覺
-    for (let i = targets.length - 1; i >= 0; i--) {
-      const t = targets[i];
+    const now = playerMs();
+    let best = null;
+    for (const t of targets) {
       if (t.hit) continue;
-      const dx = x - t.x;
-      const dy = y - t.y;
-      if (Math.sqrt(dx * dx + dy * dy) <= t.r) {
-        handleHit(t, now);
-        return;
-      }
+      if (Math.hypot(x - t.x, y - t.y) > t.r) continue;
+      if (now - t.hitMs < -diff.ok) continue;
+      if (!best || t.hitMs < best.hitMs) best = t;
     }
+    if (best) handleHit(best, now - best.hitMs);
   }
 
   function onPointerDown(clientX, clientY) {
@@ -679,21 +896,75 @@
     { passive: true }
   );
 
-  // Z / X 鍵：瞄準用滑鼠／觸控移動，擊發用鍵盤，符合 osu! 一類節奏遊戲的操作習慣
   window.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
-    if (key !== "z" && key !== "x") return;
-    if (state !== "playing") return;
-    e.preventDefault();
-    attemptHit(aimPoint.x, aimPoint.y);
+    // Z / X 鍵：瞄準用滑鼠／觸控移動，擊發用鍵盤，符合 osu! 一類節奏遊戲的操作習慣
+    if (key === "z" || key === "x") {
+      if (state !== "playing" || e.repeat) return;
+      e.preventDefault();
+      attemptHit(aimPoint.x, aimPoint.y);
+      return;
+    }
+    if (key === "escape" || key === "p") {
+      if (state === "playing") pauseGame();
+      else if (state === "paused") resumeGame();
+      return;
+    }
+    // Enter / 空白鍵：在選單或結算畫面直接開始（焦點在按鈕上時交給按鈕自己處理，避免觸發兩次）
+    if ((key === "enter" || key === " ") && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) {
+      if (state === "idle" || state === "ended") {
+        e.preventDefault();
+        startGame();
+      } else if (state === "paused") {
+        e.preventDefault();
+        resumeGame();
+      }
+    }
   });
 
+  function renderMuteButton() {
+    muteBtn.textContent = audioEnabled ? "🔊" : "🔇";
+    muteBtn.setAttribute("aria-pressed", String(!audioEnabled));
+  }
   muteBtn.addEventListener("click", () => {
     audioEnabled = !audioEnabled;
-    muteBtn.textContent = audioEnabled ? "🔊" : "🔇";
+    saveSetting("audioEnabled", audioEnabled);
+    renderMuteButton();
     if (masterGain) masterGain.gain.value = audioEnabled ? 1 : 0;
   });
 
+  // ---- 設定：難度、音訊延遲校正 ----
+  function renderSettings() {
+    document.querySelectorAll(".diff-group button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.diff === difficultyKey));
+    });
+    offsetInput.value = String(offsetMs);
+    offsetValEl.textContent = (offsetMs > 0 ? "+" : "") + offsetMs + " ms";
+    const best = loadSetting("best." + difficultyKey, null);
+    bestLineEl.textContent = best
+      ? `「${DIFFICULTIES[difficultyKey].label}」最佳紀錄：${best.score} 分（${best.grade}，${best.acc}%）`
+      : `「${DIFFICULTIES[difficultyKey].label}」還沒有紀錄，來挑戰看看吧！`;
+  }
+  document.querySelectorAll(".diff-group button").forEach((b) => {
+    b.addEventListener("click", () => {
+      difficultyKey = b.dataset.diff;
+      saveSetting("difficulty", difficultyKey);
+      renderSettings();
+    });
+  });
+  offsetInput.addEventListener("input", () => {
+    offsetMs = clamp(Number(offsetInput.value) || 0, -150, 150);
+    saveSetting("offsetMs", offsetMs);
+    renderSettings();
+  });
+
+  function showPanel(panel) {
+    for (const p of [menuPanel, pausePanel, resultPanel]) p.classList.toggle("hidden", p !== panel);
+    overlay.classList.toggle("hidden", panel === null);
+    gameWrap.classList.toggle("panel-open", panel !== null);
+  }
+
+  // ---- 繪圖 ----
   function drawBackground() {
     ctx.clearRect(0, 0, W, H);
     ctx.save();
@@ -715,19 +986,41 @@
     ctx.restore();
   }
 
+  // osu 式的「跟隨線」：把畫面上依序要打的音符連起來，提示下一顆在哪
+  function drawFollowLines() {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+    for (let i = 1; i < targets.length; i++) {
+      const a = targets[i - 1];
+      const b = targets[i];
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d <= a.r + b.r) continue;
+      const ux = (b.x - a.x) / d;
+      const uy = (b.y - a.y) / d;
+      ctx.beginPath();
+      ctx.moveTo(a.x + ux * (a.r + 4), a.y + uy * (a.r + 4));
+      ctx.lineTo(b.x - ux * (b.r + 4), b.y - uy * (b.r + 4));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawTarget(t, now) {
-    const elapsed = now - t.spawnAt;
-    const approachProgress = Math.min(elapsed / APPROACH_MS, 1);
-    const outerR = t.r + (1 - approachProgress) * t.r * 2.2;
+    const progress = clamp((now - (t.hitMs - diff.approachMs)) / diff.approachMs, 0, 1);
+    const late = Math.max(0, now - t.hitMs) / diff.ok;
+    const outerR = t.r + (1 - progress) * t.r * 2.2;
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, progress * 4) * (1 - late * 0.6);
 
     // 外圈（縮小指示圈）
     ctx.beginPath();
     ctx.arc(t.x, t.y, outerR, 0, Math.PI * 2);
     ctx.strokeStyle = t.color[1];
     ctx.lineWidth = 3;
-    ctx.globalAlpha = 0.85;
     ctx.stroke();
-    ctx.globalAlpha = 1;
 
     // 長音（held）音符加上第二道光環，視覺上區隔延音字
     if (t.held) {
@@ -752,12 +1045,18 @@
     ctx.strokeStyle = "rgba(255,255,255,0.8)";
     ctx.stroke();
 
-    // 歌詞音節文字
+    // 歌詞音節文字（字太長時自動縮小）
     ctx.fillStyle = "#1b1030";
-    ctx.font = "bold 17px 'Microsoft JhengHei', sans-serif";
+    let fontSize = Math.round(t.r * 0.5);
+    ctx.font = `bold ${fontSize}px 'Microsoft JhengHei', sans-serif`;
+    while (fontSize > 10 && ctx.measureText(t.char).width > t.r * 1.7) {
+      fontSize -= 1;
+      ctx.font = `bold ${fontSize}px 'Microsoft JhengHei', sans-serif`;
+    }
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(t.char, t.x, t.y + 1);
+    ctx.restore();
   }
 
   function drawPopEffects(now) {
@@ -829,65 +1128,123 @@
     }
   }
 
+  // 開局倒數：讓玩家看到「3、2、1」再開始
+  function drawLeadIn(ms) {
+    if (ms >= 0) return;
+    const n = Math.ceil(-ms / 500);
+    if (n > 3) return;
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "bold 64px 'Microsoft JhengHei', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(n), W / 2, H / 2);
+    ctx.restore();
+  }
+
+  function drawFrame(ms) {
+    const wall = performance.now();
+    drawBackground();
+    drawFollowLines();
+    // 先畫較晚的音符，讓最早該打的那顆疊在最上面
+    for (let i = targets.length - 1; i >= 0; i--) drawTarget(targets[i], ms);
+    drawParticles(wall);
+    drawPopEffects(wall);
+    drawComboBanners(wall);
+    drawLeadIn(ms);
+    drawAimReticle();
+  }
+
   function gameLoop() {
+    rafId = null;
     if (state !== "playing") return;
-    const now = performance.now();
-    const elapsedAudioMs = (audioCtx.currentTime - songStartAudioTime) * 1000;
+    const now = playerMs();
 
     // 依歌曲時間軸，依序（非隨機）讓輪到的音符出現。
-    // 音符要提前 APPROACH_MS 出現，讓縮圈動畫縮到定位的瞬間，正好對上音樂實際播放該音的時間點。
-    while (elapsedAudioMs >= absoluteStartMs(nextSpawnIndex) - APPROACH_MS && targets.length < MAX_TARGETS) {
+    // 音符要提前 approachMs 出現，讓縮圈動畫縮到定位的瞬間，正好對上音樂實際播放該音的時間點。
+    while (now >= absoluteStartMs(nextSpawnIndex) - diff.approachMs) {
+      const hitMs = absoluteStartMs(nextSpawnIndex);
+      if (hitMs >= GAME_SECONDS * 1000) break;
       const loopIdx = Math.floor(nextSpawnIndex / SONG_NOTES.length);
-      spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length], loopIdx);
+      spawnTargetFromNote(SONG_NOTES[nextSpawnIndex % SONG_NOTES.length], loopIdx, hitMs);
       nextSpawnIndex++;
     }
 
-    updateKaraokeHighlight(elapsedAudioMs);
+    updateKaraokeHighlight(now);
+    updateClockHUD(now);
 
     // 移除逾時未點中的音符（記為 MISS）
     for (const t of targets) {
-      if (!t.hit && now - t.spawnAt > APPROACH_MS + HIT_WINDOW_MS) {
-        t.expired = true;
+      if (!t.hit && now - t.hitMs > diff.ok) {
+        t.hit = true;
         handleMiss(t);
+        if (state !== "playing") return; // HP 歸零，已經結束
       }
     }
-    targets = targets.filter((t) => !t.hit && !t.expired);
+    targets = targets.filter((t) => !t.hit);
 
-    drawBackground();
-    for (const t of targets) drawTarget(t, now);
-    drawParticles(now);
-    drawPopEffects(now);
-    drawComboBanners(now);
-    drawAimReticle();
+    if (now >= GAME_SECONDS * 1000) {
+      endGame(false);
+      return;
+    }
 
+    drawFrame(now);
     rafId = requestAnimationFrame(gameLoop);
-  }
-
-  function startCountdown() {
-    countdownId = setInterval(() => {
-      timeLeft -= 1;
-      timeEl.textContent = String(Math.max(timeLeft, 0));
-      timeFillEl.style.width = clamp((timeLeft / GAME_SECONDS) * 100, 0, 100) + "%";
-      if (timeLeft <= 0) {
-        endGame();
-      }
-    }, 1000);
   }
 
   function startGame() {
     resetState();
-    state = "playing";
-    overlay.classList.add("hidden");
-
     stopAllAudio();
-    songStartAudioTime = scheduleSong((GAME_SECONDS + 2) * 1000);
-
-    startCountdown();
+    songStartAudioTime = scheduleSong((GAME_SECONDS + 1) * 1000);
+    state = "playing";
+    showPanel(null);
+    pauseBtn.disabled = false;
+    if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(gameLoop);
   }
 
-  function computeRank() {
-    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 0;
+  function pauseGame() {
+    if (state !== "playing") return;
+    state = "paused";
+    if (audioCtx) audioCtx.suspend();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    pauseBtn.textContent = "▶";
+    pauseBtn.title = "繼續（Esc / P）";
+    showPanel(pausePanel);
+    $("resumeBtn").focus();
+  }
+
+  function resumeGame() {
+    if (state !== "paused") return;
+    state = "playing";
+    pauseBtn.textContent = "⏸";
+    pauseBtn.title = "暫停（Esc / P）";
+    showPanel(null);
+    const resume = audioCtx ? audioCtx.resume() : Promise.resolve();
+    resume.then(() => {
+      if (state === "playing" && !rafId) rafId = requestAnimationFrame(gameLoop);
+    });
+  }
+
+  function backToMenu() {
+    state = "idle";
+    stopAllAudio();
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    targets = [];
+    pauseBtn.disabled = true;
+    pauseBtn.textContent = "⏸";
+    lyricTicker.textContent = "按下「開始遊戲」，音符將依照歌曲歌詞的正確順序出現！";
+    drawBackground();
+    renderSettings();
+    showPanel(menuPanel);
+  }
+
+  function computeRank(failed) {
+    if (failed) return { grade: "F", color: "#ff6f7f" };
+    const acc = judgedCount > 0 ? accuracyPct() : 0;
     if (acc >= 95 && counts.MISS === 0) return { grade: "SS", color: "#ffd76f" };
     if (acc >= 90) return { grade: "S", color: "#ff9ecb" };
     if (acc >= 80) return { grade: "A", color: "#a6ff6f" };
@@ -896,35 +1253,90 @@
     return { grade: "D", color: "#8f8899" };
   }
 
-  function endGame() {
+  // 依擊中誤差的平均值，告訴玩家整體偏早還是偏晚，並建議怎麼調音訊延遲校正
+  function describeTiming() {
+    if (hitErrors.length < 5) return "";
+    const mean = hitErrors.reduce((a, b) => a + b, 0) / hitErrors.length;
+    const rounded = Math.round(mean);
+    if (Math.abs(rounded) < 15) return `平均誤差 ${rounded >= 0 ? "+" : ""}${rounded} ms，節奏抓得很準！`;
+    const suggestion = clamp(Math.round((offsetMs + mean) / 10) * 10, -150, 150);
+    return `平均${mean > 0 ? "偏晚" : "偏早"} ${Math.abs(rounded)} ms。如果你覺得自己是跟著音樂打的，可以到主選單把「音訊延遲校正」調到約 ${suggestion > 0 ? "+" : ""}${suggestion} ms 試試。`;
+  }
+
+  function endGame(failed) {
+    if (state === "ended") return;
     state = "ended";
-    clearInterval(countdownId);
     if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    stopAllAudio();
     targets = [];
+    pauseBtn.disabled = true;
     drawBackground();
 
-    const acc = judgedCount > 0 ? (accuracyPoints / (judgedCount * 300)) * 100 : 0;
-    const rank = computeRank();
+    const acc = judgedCount > 0 ? accuracyPct() : 0;
+    const rank = computeRank(failed);
 
-    overlay.innerHTML = `
-      <p>時間到！這是你這回合的表現：</p>
-      <div class="result-score">總分：${score} 分</div>
-      <div class="result-rank" style="color:${rank.color}">${rank.grade}</div>
-      <div class="result-grid">
-        <div><span class="k">最高連擊</span><span class="v">${maxCombo}</span></div>
-        <div><span class="k">準確度</span><span class="v">${acc.toFixed(1)}%</span></div>
-        <div><span class="k">PERFECT / GREAT / OK</span><span class="v">${counts.PERFECT} / ${counts.GREAT} / ${counts.OK}</span></div>
-        <div><span class="k">MISS</span><span class="v">${counts.MISS}</span></div>
-      </div>
-      <button class="game-btn" id="restartBtn">重新開始</button>
-    `;
-    overlay.classList.remove("hidden");
-    document.getElementById("restartBtn").addEventListener("click", startGame);
+    // 最佳紀錄（挑戰失敗不列入）
+    let isRecord = false;
+    if (!failed) {
+      const best = loadSetting("best." + difficultyKey, null);
+      if (!best || score > best.score) {
+        isRecord = true;
+        saveSetting("best." + difficultyKey, { score, grade: rank.grade, acc: acc.toFixed(1) });
+      }
+    }
+
+    $("resultTitle").textContent = failed
+      ? `HP 歸零，挑戰失敗！（${diff.label}）再試一次吧～`
+      : `時間到！這是你在「${diff.label}」的表現：`;
+    $("resultScore").textContent = `總分：${score} 分`;
+    const rankEl = $("resultRank");
+    rankEl.textContent = rank.grade;
+    rankEl.style.color = rank.color;
+    $("newRecord").hidden = !isRecord;
+    $("resMaxCombo").textContent = String(maxCombo);
+    $("resAcc").textContent = acc.toFixed(1) + "%";
+    $("resCounts").textContent = `${counts.PERFECT} / ${counts.GREAT} / ${counts.OK}`;
+    $("resMiss").textContent = String(counts.MISS);
+    $("resTiming").textContent = describeTiming();
+    showPanel(resultPanel);
+    $("restartBtn").focus();
   }
 
   startBtn.addEventListener("click", startGame);
+  $("restartBtn").addEventListener("click", startGame);
+  $("menuBtn").addEventListener("click", backToMenu);
+  $("resumeBtn").addEventListener("click", resumeGame);
+  $("pauseRestartBtn").addEventListener("click", () => {
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    startGame();
+  });
+  $("pauseMenuBtn").addEventListener("click", backToMenu);
+  pauseBtn.addEventListener("click", () => {
+    if (state === "playing") pauseGame();
+    else if (state === "paused") resumeGame();
+  });
 
-  // 初始畫面預覽
+  // 切到別的分頁或縮小視窗時自動暫停，回來再按繼續
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state === "playing") pauseGame();
+  });
+
+  // 測試用的小介面（一般遊玩不會用到）
+  window.__twinkleDebug = {
+    getState: () => ({
+      state, score, combo, maxCombo, hp, counts: { ...counts }, difficulty: difficultyKey, offsetMs,
+      nowMs: audioCtx && (state === "playing" || state === "paused") ? playerMs() : null,
+      targets: targets.filter((t) => !t.hit).map((t) => ({ x: t.x, y: t.y, r: t.r, hitMs: t.hitMs, char: t.char }))
+    }),
+    hitAt: attemptHit,
+    setAim: (x, y) => { aimPoint = { x, y }; }
+  };
+
+  // 初始畫面
+  renderMuteButton();
+  renderSettings();
+  showPanel(menuPanel);
   drawBackground();
 })();
 </script>
